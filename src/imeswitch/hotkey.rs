@@ -1,13 +1,14 @@
-use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 
 use rdev::{Event, EventType, Key, listen};
+use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use tracing::error;
 
 #[derive(Default)]
 struct HotkeyState {
     ctrl_down: bool,
-    trigger_down: bool,
+    bracket_down: bool,
+    escape_down: bool,
     triggered: bool,
 }
 
@@ -15,16 +16,20 @@ fn is_ctrl(key: Key) -> bool {
     matches!(key, Key::ControlLeft | Key::ControlRight)
 }
 
-fn is_trigger_key(key: Key) -> bool {
-    matches!(key, Key::LeftBracket | Key::Escape)
+fn is_bracket_key(key: Key) -> bool {
+    matches!(key, Key::LeftBracket)
 }
 
-pub fn spawn_escape_listener(enabled: bool) -> Option<Receiver<()>> {
+fn is_escape_key(key: Key) -> bool {
+    matches!(key, Key::Escape)
+}
+
+pub fn spawn_escape_listener(enabled: bool) -> Option<UnboundedReceiver<()>> {
     if !enabled {
         return None;
     }
 
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = unbounded_channel();
     let state = Arc::new(Mutex::new(HotkeyState::default()));
 
     std::thread::spawn({
@@ -41,11 +46,16 @@ pub fn spawn_escape_listener(enabled: bool) -> Option<Receiver<()>> {
                         if is_ctrl(key) {
                             state.ctrl_down = true;
                         }
-                        if is_trigger_key(key) {
-                            state.trigger_down = true;
+                        if is_bracket_key(key) {
+                            state.bracket_down = true;
+                        }
+                        if is_escape_key(key) {
+                            state.escape_down = true;
                         }
 
-                        if state.ctrl_down && state.trigger_down && !state.triggered {
+                        let should_trigger =
+                            state.escape_down || (state.ctrl_down && state.bracket_down);
+                        if should_trigger && !state.triggered {
                             let _ = tx.send(());
                             state.triggered = true;
                         }
@@ -54,11 +64,16 @@ pub fn spawn_escape_listener(enabled: bool) -> Option<Receiver<()>> {
                         if is_ctrl(key) {
                             state.ctrl_down = false;
                         }
-                        if is_trigger_key(key) {
-                            state.trigger_down = false;
+                        if is_bracket_key(key) {
+                            state.bracket_down = false;
+                        }
+                        if is_escape_key(key) {
+                            state.escape_down = false;
                         }
 
-                        if !state.ctrl_down || !state.trigger_down {
+                        let still_pressed =
+                            state.escape_down || (state.ctrl_down && state.bracket_down);
+                        if !still_pressed {
                             state.triggered = false;
                         }
                     }

@@ -1,86 +1,105 @@
-use std::sync::mpsc::Receiver;
-use std::time::Instant;
-use tracing::info;
+use std::sync::Arc;
+
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::task::JoinSet;
+use tokio::time::interval;
+use tracing::error;
 
 use super::config::Config;
 use super::ffi;
 use super::hotkey;
 
 pub struct Runner {
-    config: Config,
-    prev_foreground_window: Option<isize>,
-    hotkey_rx: Option<Receiver<()>>,
+    config: Arc<Config>,
+    hotkey_rx: Option<UnboundedReceiver<()>>,
 }
 
 impl Runner {
     pub fn new(config: Config) -> Self {
-        let prev_foreground_window = ffi::foreground_window();
         let hotkey_rx = hotkey::spawn_escape_listener(config.escape_switching);
 
         Self {
-            config,
-            prev_foreground_window,
+            config: Arc::new(config),
             hotkey_rx,
         }
     }
 
-    pub fn run(&mut self) -> ! {
-        let mut last_tick = Instant::now();
+    pub async fn run(mut self) -> ! {
+        let mut tasks = JoinSet::new();
+
+        if self.config.ensure_chinese_mode {
+            let config = Arc::clone(&self.config);
+            tasks.spawn(async move {
+                Self::run_chinese_mode_guard(config).await;
+            });
+        }
+
+        if self.config.ime_resetting {
+            let config = Arc::clone(&self.config);
+            tasks.spawn(async move {
+                Self::run_focus_reset_loop(config).await;
+            });
+        }
+
+        if let Some(hotkey_rx) = self.hotkey_rx.take() {
+            let config = Arc::clone(&self.config);
+            tasks.spawn(async move {
+                Self::run_hotkey_consumer(hotkey_rx, config).await;
+            });
+        }
 
         loop {
-            self.ensure_chinese_mode_if_needed();
-            self.reset_method_on_focus_change_if_needed();
-            self.handle_escape_hotkey();
+            match tasks.join_next().await {
+                Some(Ok(())) => {}
+                Some(Err(err)) => {
+                    error!(?err, "imeswitch child task exited unexpectedly");
+                }
+                None => {
+                    error!("imeswitch has no active child tasks");
+                    std::future::pending::<()>().await;
+                }
+            }
+        }
+    }
 
-            if self.config.verbose && last_tick.elapsed() >= self.config.tick_interval {
-                info!("imeswitch alive");
-                last_tick = Instant::now();
+    async fn run_chinese_mode_guard(config: Arc<Config>) {
+        let mut ticker = interval(config.poll_interval);
+        loop {
+            ticker.tick().await;
+            let Some(layout) = ffi::current_layout_id() else {
+                continue;
+            };
+            if layout != config.locale_zh {
+                continue;
             }
 
-            std::thread::sleep(self.config.poll_interval);
+            let Some(mode) = ffi::get_input_mode() else {
+                continue;
+            };
+
+            if mode & 0x01 == 0 {
+                let _ = ffi::switch_input_mode(1);
+            }
         }
     }
 
-    fn ensure_chinese_mode_if_needed(&self) {
-        if !self.config.ensure_chinese_mode {
-            return;
-        }
+    async fn run_focus_reset_loop(config: Arc<Config>) {
+        let mut prev_foreground_window = ffi::foreground_window();
+        let mut ticker = interval(config.poll_interval);
 
-        let Some(layout) = ffi::current_layout_id() else {
-            return;
-        };
-        if layout != self.config.locale_zh {
-            return;
-        }
-
-        let Some(mode) = ffi::get_input_mode() else {
-            return;
-        };
-
-        if mode & 0x01 == 0 {
-            let _ = ffi::switch_input_mode(1);
+        loop {
+            ticker.tick().await;
+            let now = ffi::foreground_window();
+            if now != prev_foreground_window {
+                prev_foreground_window = now;
+                let _ = ffi::switch_input_method(config.locale_en);
+            }
         }
     }
 
-    fn reset_method_on_focus_change_if_needed(&mut self) {
-        if !self.config.ime_resetting {
-            return;
-        }
-
-        let now = ffi::foreground_window();
-        if now != self.prev_foreground_window {
-            self.prev_foreground_window = now;
-            let _ = ffi::switch_input_method(self.config.locale_en);
-        }
-    }
-
-    fn handle_escape_hotkey(&self) {
-        let Some(rx) = &self.hotkey_rx else {
-            return;
-        };
-
-        while rx.try_recv().is_ok() {
-            let _ = ffi::switch_input_method(self.config.locale_en);
+    async fn run_hotkey_consumer(mut rx: UnboundedReceiver<()>, config: Arc<Config>) {
+        while rx.recv().await.is_some() {
+            let _ = ffi::switch_input_method(config.locale_en);
         }
     }
 }

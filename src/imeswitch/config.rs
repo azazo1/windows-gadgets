@@ -8,6 +8,4 @@ pub struct Config {
     pub locale_zh: u16,
     pub ensure_chinese_mode: bool,
     pub poll_interval: Duration,
-    pub tick_interval: Duration,
-    pub verbose: bool,
 }

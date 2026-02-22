@@ -97,14 +97,7 @@ pub fn switch_input_method(locale: u32) -> bool {
         return false;
     };
 
-    let ok = unsafe {
-        PostMessageW(
-            hwnd,
-            WM_INPUTLANGCHANGEREQUEST,
-            0,
-            locale as isize,
-        )
-    };
+    let ok = unsafe { PostMessageW(hwnd, WM_INPUTLANGCHANGEREQUEST, 0, locale as isize) };
 
     ok != 0
 }
