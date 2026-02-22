@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rdev::Key;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::state::{Action, Direction};
 
@@ -63,18 +63,18 @@ impl HotkeyConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct FileConfig {
     caps: Option<CapsConfig>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct CapsConfig {
     tap_action: Option<String>,
     bindings: Option<Vec<BindingConfig>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct BindingConfig {
     key: String,
     action: String,
@@ -91,8 +91,15 @@ pub fn load_hotkey_config() -> HotkeyConfig {
     };
 
     if !path.exists() {
-        tracing::warn!(target: "fncaps::config", path = %path.display(), "config file not found, use built-in defaults");
-        return default_hotkey_config();
+        tracing::warn!(target: "fncaps::config", path = %path.display(), "config file not found");
+        let default_cfg = default_hotkey_config();
+        // 尝试生成并保存默认配置
+        if let Err(e) = save_default_config(&path, &default_cfg) {
+            tracing::warn!(target: "fncaps::config", path = %path.display(), error = %e, "failed to save default config");
+        } else {
+            tracing::info!(target: "fncaps::config", path = %path.display(), "default config generated and saved");
+        }
+        return default_cfg;
     }
 
     match load_hotkey_config_from_file(&path) {
@@ -121,6 +128,152 @@ fn load_hotkey_config_from_file(path: &Path) -> Result<HotkeyConfig, String> {
         .map_err(|e| format!("failed to parse TOML '{}': {e}", path.display()))?;
 
     build_config_from_file(parsed)
+}
+
+/// 将默认配置转换为 FileConfig 并保存到文件
+fn save_default_config(path: &Path, cfg: &HotkeyConfig) -> Result<(), String> {
+    // 确保目录存在
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("failed to create config directory '{}': {e}", parent.display()))?;
+    }
+
+    // 转换为可序列化的 FileConfig
+    let file_cfg = config_to_file(cfg);
+
+    // 序列化为 TOML
+    let toml_str = toml::to_string_pretty(&file_cfg)
+        .map_err(|e| format!("failed to serialize config: {e}"))?;
+
+    // 保存到文件
+    fs::write(path, toml_str)
+        .map_err(|e| format!("failed to write config '{}': {e}", path.display()))?;
+
+    Ok(())
+}
+
+/// 将 HotkeyConfig 转换为 FileConfig（用于序列化）
+fn config_to_file(cfg: &HotkeyConfig) -> FileConfig {
+    let tap_action = action_to_string(&cfg.caps_tap_action);
+
+    let bindings = cfg
+        .rules
+        .iter()
+        .map(|rule| {
+            let key_str = key_to_string(rule.key);
+            let action_str = action_to_string(&rule.action);
+            let shift_str = match rule.shift {
+                super::config::ShiftRequirement::Any => None,
+                super::config::ShiftRequirement::Down => Some("down".to_string()),
+                super::config::ShiftRequirement::Up => Some("up".to_string()),
+            };
+
+            BindingConfig {
+                key: key_str,
+                action: action_str,
+                shift: shift_str,
+                suppress: Some(rule.suppress),
+                pending: Some(rule.pending),
+            }
+        })
+        .collect();
+
+    FileConfig {
+        caps: Some(CapsConfig {
+            tap_action: Some(tap_action),
+            bindings: Some(bindings),
+        }),
+    }
+}
+
+/// 将 Action 转换为字符串表示
+fn action_to_string(action: &Action) -> String {
+    match action {
+        Action::None => "none".to_string(),
+        Action::SwitchTo(Direction::Left) => "switch_left".to_string(),
+        Action::SwitchTo(Direction::Right) => "switch_right".to_string(),
+        Action::SwitchTo(Direction::Up) => "switch_up".to_string(),
+        Action::SwitchTo(Direction::Down) => "switch_down".to_string(),
+        Action::Scroll(n) if *n > 0 => "scroll_up".to_string(),
+        Action::Scroll(_) => "scroll_down".to_string(),
+        Action::SwitchIme => "switch_ime".to_string(),
+        Action::OpenProgram { program } => format!("open_program:{}", program),
+        Action::SwitchWindow { title } => format!("switch_window:{}", title),
+        Action::SwitchOrOpen { window_title, program } => {
+            format!("switch_or_open:{}:{}", window_title, program)
+        }
+    }
+}
+
+/// 将 Key 转换为字符串表示
+fn key_to_string(key: Key) -> String {
+    match key {
+        Key::KeyA => "a",
+        Key::KeyB => "b",
+        Key::KeyC => "c",
+        Key::KeyD => "d",
+        Key::KeyE => "e",
+        Key::KeyF => "f",
+        Key::KeyG => "g",
+        Key::KeyH => "h",
+        Key::KeyI => "i",
+        Key::KeyJ => "j",
+        Key::KeyK => "k",
+        Key::KeyL => "l",
+        Key::KeyM => "m",
+        Key::KeyN => "n",
+        Key::KeyO => "o",
+        Key::KeyP => "p",
+        Key::KeyQ => "q",
+        Key::KeyR => "r",
+        Key::KeyS => "s",
+        Key::KeyT => "t",
+        Key::KeyU => "u",
+        Key::KeyV => "v",
+        Key::KeyW => "w",
+        Key::KeyX => "x",
+        Key::KeyY => "y",
+        Key::KeyZ => "z",
+        Key::Num0 => "0",
+        Key::Num1 => "1",
+        Key::Num2 => "2",
+        Key::Num3 => "3",
+        Key::Num4 => "4",
+        Key::Num5 => "5",
+        Key::Num6 => "6",
+        Key::Num7 => "7",
+        Key::Num8 => "8",
+        Key::Num9 => "9",
+        Key::LeftArrow => "left",
+        Key::RightArrow => "right",
+        Key::UpArrow => "up",
+        Key::DownArrow => "down",
+        Key::Space => "space",
+        Key::Return => "enter",
+        Key::Tab => "tab",
+        Key::Escape => "esc",
+        Key::Backspace => "backspace",
+        Key::Home => "home",
+        Key::End => "end",
+        Key::PageUp => "pageup",
+        Key::PageDown => "pagedown",
+        Key::Insert => "insert",
+        Key::Delete => "delete",
+        Key::F1 => "f1",
+        Key::F2 => "f2",
+        Key::F3 => "f3",
+        Key::F4 => "f4",
+        Key::F5 => "f5",
+        Key::F6 => "f6",
+        Key::F7 => "f7",
+        Key::F8 => "f8",
+        Key::F9 => "f9",
+        Key::F10 => "f10",
+        Key::F11 => "f11",
+        Key::F12 => "f12",
+        _ => "unknown",
+    }
+    .to_string()
 }
 
 fn build_config_from_file(parsed: FileConfig) -> Result<HotkeyConfig, String> {
