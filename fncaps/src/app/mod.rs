@@ -1,3 +1,4 @@
+mod config;
 mod hotkey;
 mod ime;
 mod launch;

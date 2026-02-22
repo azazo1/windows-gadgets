@@ -1,0 +1,150 @@
+# fncaps 配置文件示例
+#
+# 配置文件自动加载位置 (按平台标准):
+#   Linux:   $XDG_CONFIG_HOME/fncaps/fncaps.toml  或  $HOME/.config/fncaps/fncaps.toml
+#   macOS:   $HOME/Library/Application Support/fncaps/fncaps.toml
+#   Windows: {FOLDERID_RoamingAppData}\fncaps\fncaps.toml  (即 C:\Users\<username>\AppData\Roaming\fncaps\fncaps.toml)
+#
+# 例子:
+#   Linux:   /home/alice/.config/fncaps/fncaps.toml
+#   macOS:   /Users/Alice/Library/Application Support/fncaps/fncaps.toml
+#   Windows: C:\Users\Alice\AppData\Roaming\fncaps\fncaps.toml
+#
+# 自定义配置路径:
+#   设置环境变量 FNCAPS_CONFIG 可指定其他位置，例如:
+#   export FNCAPS_CONFIG=/custom/path/to/fncaps.toml  (Linux/macOS)
+#   set FNCAPS_CONFIG=C:\custom\path\to\fncaps.toml   (Windows)
+
+[caps]
+# CapsLock 单击时执行的动作 (默认: 切换输入法)
+tap_action = "switch_ime"
+
+# 快捷键绑定规则
+[[caps.bindings]]
+key = "h"
+action = "switch_left"
+shift = "any"
+suppress = true
+pending = true
+
+[[caps.bindings]]
+key = "l"
+action = "switch_right"
+shift = "any"
+suppress = true
+pending = true
+
+[[caps.bindings]]
+key = "k"
+action = "switch_up"
+shift = "up"
+suppress = true
+pending = true
+
+[[caps.bindings]]
+key = "j"
+action = "switch_down"
+shift = "up"
+suppress = true
+pending = true
+
+[[caps.bindings]]
+key = "k"
+action = "scroll_up"
+shift = "down"
+suppress = true
+pending = false
+
+[[caps.bindings]]
+key = "j"
+action = "scroll_down"
+shift = "down"
+suppress = true
+pending = false
+
+# ======= 参数化 Action 示例 =======
+
+# 打开指定程序: open_program:program_name_or_path
+[[caps.bindings]]
+key = "e"
+action = "open_program:notepad.exe"
+shift = "any"
+suppress = true
+pending = true
+
+[[caps.bindings]]
+key = "n"
+action = "open_program:explorer.exe"
+shift = "any"
+suppress = true
+pending = true
+
+# 切换到指定窗口: switch_window:window_title
+# 支持精确匹配和模糊匹配 (包含)
+[[caps.bindings]]
+key = "c"
+action = "switch_window:Visual Studio Code"
+shift = "any"
+suppress = true
+pending = true
+
+[[caps.bindings]]
+key = "f"
+action = "switch_window:Firefox"
+shift = "any"
+suppress = true
+pending = true
+
+# 切换到指定窗口，如果不存在则打开程序: switch_or_open:window_title:program_path
+# 也支持用管道符分割: switch_or_open:window_title|program_path
+[[caps.bindings]]
+key = "v"
+action = "switch_or_open:VSCode:Code.exe"
+shift = "any"
+suppress = true
+pending = true
+
+[[caps.bindings]]
+key = "p"
+action = "switch_or_open:PowerShell|pwsh.exe"
+shift = "any"
+suppress = true
+pending = true
+
+[[caps.bindings]]
+key = "b"
+action = "switch_or_open:Chrome:chrome.exe"
+shift = "any"
+suppress = true
+pending = true
+
+# 复杂示例：用完整路径打开程序
+[[caps.bindings]]
+key = "x"
+action = "open_program:C:\\Program Files\\Notepad++\\notepad++.exe"
+shift = "any"
+suppress = true
+pending = true
+
+# 动作类型参考:
+# - none: 无操作
+# - switch_ime: 切换输入法 (CapsLock 单击默认)
+# - switch_left / switch_right / switch_up / switch_down: 按方向切换窗口焦点
+# - scroll_up / scroll_down: 滚动鼠标滚轮
+# - open_program:program: 打开指定程序 (可以是 PATH 中的程序名或完整路径，会自动用 which 查找)
+# - switch_window:title: 切换到标题中包含 title 的窗口 (精确匹配优先，不存在不操作)
+# - switch_or_open:window_title:program: 切换到窗口或打开程序 (精确匹配优先，找不到窗口就打开程序)
+#   - 支持用冒号分割: switch_or_open:VSCode:Code.exe
+#   - 也支持用管道分割: switch_or_open:VSCode|Code.exe
+
+# Shift 要求:
+# - "any" / 不指定: CapsLock + key
+# - "down" / "pressed": CapsLock + Shift + key (按下时)
+# - "up" / "released": CapsLock + key (未按 Shift)
+
+# 配置项:
+# - key: 按键名称 (h, l, k, j, n, e, v, p, left, right, up, down, space, enter, tab, esc, f1-f12 等)
+# - action: 要执行的动作 (参考上方类型)
+# - shift: shift 按键状态要求 (可选，默认 any)
+# - suppress: 是否拦截键盘事件不让系统处理 (可选，默认 true)
+# - pending: 是否在按住该键时吞掉后续的重复事件 (可选，默认 true)

@@ -39,15 +39,25 @@ impl State {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Action {
     None,
     SwitchTo(Direction),
     Scroll(i32),
-    OpenTextEditor,
-    OpenVsCode,
-    OpenPwsh,
     SwitchIme,
+    /// 打开指定程序
+    OpenProgram {
+        program: String,
+    },
+    /// 切换到指定窗口标题
+    SwitchWindow {
+        title: String,
+    },
+    /// 切换到指定窗口或打开程序
+    SwitchOrOpen {
+        window_title: String,
+        program: String,
+    },
 }
 
 pub static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| Mutex::new(State::new()));

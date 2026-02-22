@@ -1,36 +1,22 @@
-use std::path::PathBuf;
 use std::process::Command;
 
-const TEXT_EDITOR_EXE_PATH: &str = "subl.exe";
+/// 打开指定的程序或可执行文件
+pub fn open_program(program: &str) {
+    tracing::info!(target: "fncaps::launch", program, "launching program");
 
-pub fn open_text_editor() {
-    tracing::info!(target: "fncaps::launch", exe = TEXT_EDITOR_EXE_PATH, "launching text editor");
-    let _ = Command::new(TEXT_EDITOR_EXE_PATH).spawn();
-}
-
-pub fn open_vscode() {
-    if let Some(path) = find_vscode_executable() {
-        tracing::info!(target: "fncaps::launch", exe = %path.display(), "launching vscode");
-        let _ = Command::new(path).spawn();
-    } else {
-        tracing::warn!(target: "fncaps::launch", "vscode executable not found");
+    // 尝试直接运行 (可能是 PATH 中的可执行文件或完整路径)
+    match Command::new(program).spawn() {
+        Ok(_) => {
+            tracing::debug!(target: "fncaps::launch", program, "program spawned successfully");
+        }
+        Err(e) => {
+            // 如果直接运行失败，尝试通过 which 查找
+            if let Ok(path) = which::which(program) {
+                tracing::debug!(target: "fncaps::launch", program, resolved = %path.display(), "resolved via which");
+                let _ = Command::new(path).spawn();
+            } else {
+                tracing::error!(target: "fncaps::launch", program, error = %e, "failed to launch program");
+            }
+        }
     }
-}
-
-pub fn open_pwsh() {
-    let home = std::env::var_os("USERPROFILE")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
-        .unwrap_or_else(|| PathBuf::from("C:\\"));
-
-    let Ok(pwsh) = which::which("pwsh.exe") else {
-        tracing::warn!(target:"fncaps::launch", "pwsh.exe not found");
-        return;
-    };
-    tracing::info!(target: "fncaps::launch", exe = %pwsh.display(), cwd = %home.display(), "launching shell");
-    let _ = Command::new(pwsh).current_dir(home).spawn();
-}
-
-fn find_vscode_executable() -> Option<PathBuf> {
-    which::which("Code.exe").ok()
 }

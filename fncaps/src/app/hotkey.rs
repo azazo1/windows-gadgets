@@ -1,14 +1,18 @@
 use std::net::TcpListener;
+use std::sync::OnceLock;
 
 use rdev::{Event, EventType, Key, grab};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, KEYEVENTF_KEYUP, MOUSEEVENTF_WHEEL, VK_LSHIFT, keybd_event, mouse_event,
 };
 
+use super::config::{HotkeyConfig, load_hotkey_config};
 use super::ime;
 use super::launch;
-use super::state::{Action, Direction, STATE};
+use super::state::{Action, STATE};
 use super::windows_ops;
+
+static HOTKEY_CONFIG: OnceLock<HotkeyConfig> = OnceLock::new();
 
 pub fn run() -> Result<(), String> {
     let _instance = TcpListener::bind("127.0.0.1:23982")
@@ -19,6 +23,15 @@ pub fn run() -> Result<(), String> {
     {
         let _ = std::env::set_current_dir(parent);
     }
+
+    let cfg = load_hotkey_config();
+    let _ = HOTKEY_CONFIG.set(cfg);
+
+    let loaded = HOTKEY_CONFIG
+        .get()
+        .map(|c| c.rules.len())
+        .unwrap_or_default();
+    tracing::info!(target: "fncaps::hotkey", rules = loaded, "hotkey rules ready");
 
     tracing::info!(target: "fncaps::hotkey", "global keyboard capture started");
     grab(event_callback).map_err(|e| format!("keyboard grab failed: {e:?}"))
@@ -72,66 +85,36 @@ fn event_callback(event: Event) -> Option<Event> {
             return Some(event);
         }
 
-        if (key == Key::LeftArrow || key == Key::KeyH) && state.caps_lock_pressing && is_pressing {
-            state.pending_key = Some(key);
-            state.operations = true;
-            action = Action::SwitchTo(Direction::Left);
-            suppress = true;
-        } else if (key == Key::RightArrow || key == Key::KeyL)
-            && state.caps_lock_pressing
-            && is_pressing
+        if state.caps_lock_pressing && is_pressing {
+            if let Some(rule) = HOTKEY_CONFIG
+                .get()
+                .and_then(|cfg| cfg.resolve(key, state.lshift_pressing))
+            {
+                if rule.pending {
+                    state.pending_key = Some(key);
+                }
+                state.operations = true;
+                action = rule.action.clone();
+                suppress = rule.suppress;
+                tracing::info!(
+                    target: "fncaps::hotkey",
+                    ?key,
+                    ?rule.action,
+                    pending = rule.pending,
+                    suppress = rule.suppress,
+                    rule = %rule.description,
+                    "matched configured caps binding"
+                );
+            }
+        }
+
+        if matches!(action, Action::SwitchIme)
+            && !is_pressing
+            && key == Key::CapsLock
+            && let Some(cfg) = HOTKEY_CONFIG.get()
         {
-            state.pending_key = Some(key);
-            state.operations = true;
-            action = Action::SwitchTo(Direction::Right);
-            suppress = true;
-        } else if (key == Key::UpArrow || key == Key::KeyK)
-            && state.caps_lock_pressing
-            && state.lshift_pressing
-            && is_pressing
-        {
-            state.operations = true;
-            action = Action::Scroll(1);
-            suppress = true;
-        } else if (key == Key::UpArrow || key == Key::KeyK)
-            && state.caps_lock_pressing
-            && is_pressing
-        {
-            state.pending_key = Some(key);
-            state.operations = true;
-            action = Action::SwitchTo(Direction::Up);
-            suppress = true;
-        } else if (key == Key::DownArrow || key == Key::KeyJ)
-            && state.caps_lock_pressing
-            && state.lshift_pressing
-            && is_pressing
-        {
-            state.operations = true;
-            action = Action::Scroll(-1);
-            suppress = true;
-        } else if (key == Key::DownArrow || key == Key::KeyJ)
-            && state.caps_lock_pressing
-            && is_pressing
-        {
-            state.pending_key = Some(key);
-            state.operations = true;
-            action = Action::SwitchTo(Direction::Down);
-            suppress = true;
-        } else if key == Key::KeyE && state.caps_lock_pressing && is_pressing {
-            state.pending_key = Some(key);
-            state.operations = true;
-            action = Action::OpenTextEditor;
-            suppress = true;
-        } else if key == Key::KeyV && state.caps_lock_pressing && is_pressing {
-            state.pending_key = Some(key);
-            state.operations = true;
-            action = Action::OpenVsCode;
-            suppress = true;
-        } else if key == Key::KeyP && state.caps_lock_pressing && is_pressing {
-            state.pending_key = Some(key);
-            state.operations = true;
-            action = Action::OpenPwsh;
-            suppress = true;
+            action = cfg.caps_tap_action.clone();
+            tracing::info!(target: "fncaps::hotkey", ?action, "caps tap action from config");
         }
     }
 
@@ -155,21 +138,30 @@ fn execute_action(action: Action, key: Key, is_pressing: bool) {
             tracing::info!(target: "fncaps::hotkey", delta, ?key, "trigger wheel scrolling");
             scroll_with_lshift_workaround(delta)
         }
-        Action::OpenTextEditor => {
-            tracing::info!(target: "fncaps::hotkey", ?key, "trigger text editor launch");
-            launch::open_text_editor()
-        }
-        Action::OpenVsCode => {
-            tracing::info!(target: "fncaps::hotkey", ?key, "trigger vscode launch");
-            launch::open_vscode()
-        }
-        Action::OpenPwsh => {
-            tracing::info!(target: "fncaps::hotkey", ?key, "trigger shell launch");
-            launch::open_pwsh()
-        }
         Action::SwitchIme => {
             tracing::info!(target: "fncaps::hotkey", "caps tap detected, switching IME");
             ime::switch_im()
+        }
+        Action::OpenProgram { program } => {
+            tracing::info!(target: "fncaps::hotkey", ?key, program = %program, "trigger custom program launch");
+            launch::open_program(&program)
+        }
+        Action::SwitchWindow { title } => {
+            tracing::info!(target: "fncaps::hotkey", ?key, window_title = %title, "trigger window switch to specific");
+            windows_ops::switch_to_window(&title)
+        }
+        Action::SwitchOrOpen {
+            window_title,
+            program,
+        } => {
+            tracing::info!(
+                target: "fncaps::hotkey",
+                ?key,
+                window_title = %window_title,
+                program = %program,
+                "trigger switch-or-open"
+            );
+            windows_ops::switch_to_window_or_open(&window_title, &program)
         }
     }
 }

@@ -333,3 +333,94 @@ fn focus_on_window(window: WindowInfo) {
         let _ = SetCursorPos(x as i32, y as i32);
     }
 }
+
+/// 切换到指定窗口标题的窗口
+pub fn switch_to_window(title: &str) {
+    tracing::info!(target: "fncaps::windows", target_title = title, "attempting to switch to window");
+
+    let Some(bounds) = update_screen_size() else {
+        tracing::warn!(target: "fncaps::windows", "cannot get monitor bounds");
+        return;
+    };
+
+    let windows = enumerate_valid_windows(bounds);
+    tracing::debug!(target: "fncaps::windows", count = windows.len(), "valid windows collected");
+
+    // 精确匹配
+    if let Some(window) = windows.iter().find(|w| {
+        if let Some(wnd_title) = get_title(w.hwnd) {
+            wnd_title == title
+        } else {
+            false
+        }
+    }) {
+        tracing::info!(target: "fncaps::windows", matched_title = title, "exact match found, switching");
+        focus_on_window(*window);
+        return;
+    }
+
+    // 模糊匹配（包含）
+    if let Some(window) = windows.iter().find(|w| {
+        if let Some(wnd_title) = get_title(w.hwnd) {
+            wnd_title.contains(title)
+        } else {
+            false
+        }
+    }) {
+        tracing::info!(target: "fncaps::windows", matched_title = title, "fuzzy match found, switching");
+        focus_on_window(*window);
+        return;
+    }
+
+    tracing::warn!(target: "fncaps::windows", target_title = title, "no window found with matching title");
+}
+
+/// 切换到指定窗口，或如果窗口不存在则打开程序
+pub fn switch_to_window_or_open(window_title: &str, program: &str) {
+    tracing::info!(
+        target: "fncaps::windows",
+        window_title,
+        program,
+        "attempting switch-or-open"
+    );
+
+    let Some(bounds) = update_screen_size() else {
+        tracing::warn!(target: "fncaps::windows", "cannot get monitor bounds, fallback to opening program");
+        super::launch::open_program(program);
+        return;
+    };
+
+    let windows = enumerate_valid_windows(bounds);
+    tracing::debug!(target: "fncaps::windows", count = windows.len(), "valid windows collected");
+
+    // 精确匹配
+    if let Some(window) = windows.iter().find(|w| {
+        if let Some(wnd_title) = get_title(w.hwnd) {
+            wnd_title.eq_ignore_ascii_case(window_title)
+        } else {
+            false
+        }
+    }) {
+        tracing::info!(target: "fncaps::windows", matched_title = window_title, "exact match found, switching");
+        focus_on_window(*window);
+        return;
+    }
+
+    // 模糊匹配（包含）
+    if let Some(window) = windows.iter().find(|w| {
+        if let Some(wnd_title) = get_title(w.hwnd) {
+            wnd_title
+                .to_lowercase()
+                .contains(&window_title.to_lowercase())
+        } else {
+            false
+        }
+    }) {
+        tracing::info!(target: "fncaps::windows", matched_title = window_title, "fuzzy match found, switching");
+        focus_on_window(*window);
+        return;
+    }
+
+    tracing::warn!(target: "fncaps::windows", window_title, "window not found, launching program");
+    super::launch::open_program(program);
+}
