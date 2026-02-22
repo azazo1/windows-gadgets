@@ -1,11 +1,4 @@
-[package]
-name = "windows-gadgets"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-clap = { version = "4", features = ["derive"] }
-rdev = "0.5"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+[workspace]
+resolver = "3"
+members = ["imeswitch"]
+default-members = ["imeswitch"]

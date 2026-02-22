@@ -4,7 +4,7 @@ mod app {
     use std::time::Duration;
     use tracing::info;
     use tracing_subscriber::EnvFilter;
-    use windows_gadgets::imeswitch::{Config, Runner};
+    use imeswitch::imeswitch::{Config, Runner};
 
     #[derive(Debug, Parser)]
     #[command(
@@ -51,8 +51,8 @@ mod app {
     }
 
     pub async fn run() {
-        let filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("imeswitch=info,windows_gadgets=info"));
+        let filter =
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("imeswitch=info"));
         tracing_subscriber::fmt()
             .with_env_filter(filter)
             .with_target(false)
