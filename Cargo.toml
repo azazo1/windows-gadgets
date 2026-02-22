@@ -1,4 +1,4 @@
 [workspace]
 resolver = "3"
-members = ["imeswitch"]
-default-members = ["imeswitch"]
+members = ["imeswitch", "fncaps"]
+default-members = ["imeswitch", "fncaps"]

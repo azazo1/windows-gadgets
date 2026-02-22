@@ -1,0 +1,16 @@
+[package]
+name = "fncaps"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rdev = { version = "0.5", features = ["unstable_grab"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+which = "8.0.0"
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }
