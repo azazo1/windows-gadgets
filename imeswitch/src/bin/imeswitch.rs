@@ -4,7 +4,7 @@ mod app {
     use std::time::Duration;
     use tracing::info;
     use tracing_subscriber::EnvFilter;
-    use imeswitch::imeswitch::{Config, Runner};
+    use imeswitch::{Config, Runner};
 
     #[derive(Debug, Parser)]
     #[command(

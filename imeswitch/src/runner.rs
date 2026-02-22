@@ -4,6 +4,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinSet;
 use tokio::time::interval;
 use tracing::error;
+use tracing::info;
 
 use super::config::Config;
 use super::ffi;
@@ -92,6 +93,7 @@ impl Runner {
             let now = ffi::foreground_window();
             if now != prev_foreground_window {
                 prev_foreground_window = now;
+                info!("foreground changed, reset to english ime.");
                 let _ = ffi::switch_input_method(config.locale_en);
             }
         }
@@ -99,6 +101,7 @@ impl Runner {
 
     async fn run_hotkey_consumer(mut rx: UnboundedReceiver<()>, config: Arc<Config>) {
         while rx.recv().await.is_some() {
+            info!("key: [escape], reset to english ime.");
             let _ = ffi::switch_input_method(config.locale_en);
         }
     }
