@@ -33,7 +33,7 @@ mod app {
         #[arg(long, default_value_t = 2052, help = "中文输入法 locale（默认 2052）")]
         locale_zh: u16,
 
-        #[arg(long, default_value_t = 100, help = "主循环轮询间隔（毫秒）")]
+        #[arg(long, default_value_t = 300, help = "主循环轮询间隔（毫秒）")]
         poll_ms: u64,
     }
 
