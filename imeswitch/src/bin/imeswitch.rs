@@ -1,10 +1,10 @@
 #[cfg(target_os = "windows")]
 mod app {
     use clap::Parser;
+    use imeswitch::{Config, Runner};
     use std::time::Duration;
     use tracing::info;
     use tracing_subscriber::EnvFilter;
-    use imeswitch::{Config, Runner};
 
     #[derive(Debug, Parser)]
     #[command(
@@ -14,7 +14,11 @@ mod app {
         after_help = "使用示例:\n  imeswitch\n  imeswitch --no-ime-resetting --no-escape-switching\n  imeswitch --locale-en 1033 --locale-zh 2052 --poll-ms 80"
     )]
     struct Args {
-        #[arg(long, default_value_t = false, help = "禁用: 窗口焦点变化时重置到英文输入法")]
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "禁用: 窗口焦点变化时重置到英文输入法"
+        )]
         no_ime_resetting: bool,
 
         #[arg(long, default_value_t = false, help = "禁用: Esc / Ctrl+[ 快捷切英文")]

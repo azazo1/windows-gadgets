@@ -134,8 +134,12 @@ fn load_hotkey_config_from_file(path: &Path) -> Result<HotkeyConfig, String> {
 fn save_default_config(path: &Path, cfg: &HotkeyConfig) -> Result<(), String> {
     // 确保目录存在
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("failed to create config directory '{}': {e}", parent.display()))?;
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "failed to create config directory '{}': {e}",
+                parent.display()
+            )
+        })?;
     }
 
     // 转换为可序列化的 FileConfig
@@ -199,7 +203,10 @@ fn action_to_string(action: &Action) -> String {
         Action::SwitchIme => "switch_ime".to_string(),
         Action::OpenProgram { program } => format!("open_program:{}", program),
         Action::SwitchWindow { title } => format!("switch_window:{}", title),
-        Action::SwitchOrOpen { window_title, program } => {
+        Action::SwitchOrOpen {
+            window_title,
+            program,
+        } => {
             format!("switch_or_open:{}:{}", window_title, program)
         }
     }
