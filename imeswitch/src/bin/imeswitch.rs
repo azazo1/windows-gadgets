@@ -11,7 +11,7 @@ mod app {
         name = "imeswitch",
         version,
         about = "Windows 输入法后台切换守护进程",
-        after_help = "使用示例:\n  imeswitch\n  imeswitch --no-ime-resetting --no-escape-switching\n  imeswitch --locale-en 1033 --locale-zh 2052 --poll-ms 80"
+        after_help = "默认热键:\n  单独按 Left Alt  -> 切到英文输入法\n  单独按 Right Alt -> 切到中文输入法\n  Esc / Ctrl+[ -> 切到英文输入法\n\n使用示例:\n  imeswitch\n  imeswitch --no-ime-resetting --no-alt-switching\n  imeswitch --no-ensure-chinese-mode\n  imeswitch --locale-en 1033 --locale-zh 2052 --poll-ms 80"
     )]
     struct Args {
         #[arg(
@@ -21,13 +21,20 @@ mod app {
         )]
         no_ime_resetting: bool,
 
-        #[arg(long, default_value_t = false, help = "禁用: Esc / Ctrl+[ 快捷切英文")]
+        #[arg(long, default_value_t = false, help = "禁用: Esc / Ctrl+[ 快捷切英文（不影响左右 Alt）")]
         no_escape_switching: bool,
 
         #[arg(
             long,
             default_value_t = false,
-            help = "禁用: 处于中文输入法时自动确保为中文模式"
+            help = "禁用: 单独按左/右 Alt 切换输入法"
+        )]
+        no_alt_switching: bool,
+
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "禁用: 中文输入法布局下自动保持中文模式"
         )]
         no_ensure_chinese_mode: bool,
 
@@ -46,6 +53,7 @@ mod app {
             Self {
                 ime_resetting: !args.no_ime_resetting,
                 escape_switching: !args.no_escape_switching,
+                alt_switching: !args.no_alt_switching,
                 locale_en: args.locale_en,
                 locale_zh: args.locale_zh,
                 ensure_chinese_mode: !args.no_ensure_chinese_mode,

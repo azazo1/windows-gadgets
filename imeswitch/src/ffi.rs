@@ -1,15 +1,16 @@
 #![cfg(target_os = "windows")]
 
-use std::ptr;
-
 type Hwnd = isize;
 type Lresult = isize;
 
 const WM_INPUTLANGCHANGEREQUEST: u32 = 0x0050;
 const WM_IME_CONTROL: u32 = 0x0283;
+const KEYEVENTF_KEYUP: u32 = 0x0002;
 
 const IMC_GETCONVERSIONMODE: usize = 0x0001;
 const IMC_SETCONVERSIONMODE: usize = 0x0002;
+const VK_LMENU: u8 = 0xA4;
+const VK_RMENU: u8 = 0xA5;
 
 #[link(name = "user32")]
 unsafe extern "system" {
@@ -18,6 +19,7 @@ unsafe extern "system" {
     fn GetKeyboardLayout(thread_id: u32) -> isize;
     fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
     fn SendMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> Lresult;
+    fn keybd_event(bvk: u8, bscan: u8, dwflags: u32, dwextrainfo: usize);
 }
 
 #[link(name = "imm32")]
@@ -39,7 +41,7 @@ pub fn foreground_window() -> Option<Hwnd> {
 /// 返回 `None` 表示无法获取前台窗口或线程信息。
 pub fn current_layout_id() -> Option<u16> {
     let hwnd = foreground_window()?;
-    let thread_id = unsafe { GetWindowThreadProcessId(hwnd, ptr::null_mut()) };
+    let thread_id = unsafe { GetWindowThreadProcessId(hwnd, std::ptr::null_mut()) };
     if thread_id == 0 {
         return None;
     }
@@ -100,4 +102,13 @@ pub fn switch_input_method(locale: u32) -> bool {
     let ok = unsafe { PostMessageW(hwnd, WM_INPUTLANGCHANGEREQUEST, 0, locale as isize) };
 
     ok != 0
+}
+
+/// 向系统注入左/右 Alt 键事件，用于把被拦截的 Alt 组合键还给前台应用。
+pub fn emit_alt_key(is_left: bool, key_up: bool) {
+    let vk = if is_left { VK_LMENU } else { VK_RMENU };
+    let flags = if key_up { KEYEVENTF_KEYUP } else { 0 };
+    unsafe {
+        keybd_event(vk, 0, flags, 0);
+    }
 }

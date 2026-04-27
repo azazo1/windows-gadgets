@@ -9,15 +9,17 @@ use tracing::info;
 use super::config::Config;
 use super::ffi;
 use super::hotkey;
+use super::hotkey::HotkeyAction;
 
 pub struct Runner {
     config: Arc<Config>,
-    hotkey_rx: Option<UnboundedReceiver<()>>,
+    hotkey_rx: Option<UnboundedReceiver<HotkeyAction>>,
 }
 
 impl Runner {
     pub fn new(config: Config) -> Self {
-        let hotkey_rx = hotkey::spawn_escape_listener(config.escape_switching);
+        let hotkey_rx =
+            hotkey::spawn_hotkey_listener(config.escape_switching, config.alt_switching);
 
         Self {
             config: Arc::new(config),
@@ -99,10 +101,19 @@ impl Runner {
         }
     }
 
-    async fn run_hotkey_consumer(mut rx: UnboundedReceiver<()>, config: Arc<Config>) {
-        while rx.recv().await.is_some() {
-            info!("key: [escape], reset to english ime.");
-            let _ = ffi::switch_input_method(config.locale_en);
+    async fn run_hotkey_consumer(mut rx: UnboundedReceiver<HotkeyAction>, config: Arc<Config>) {
+        while let Some(action) = rx.recv().await {
+            match action {
+                HotkeyAction::SwitchEnglish => {
+                    info!("hotkey triggered, switch to english ime.");
+                    let _ = ffi::switch_input_method(config.locale_en);
+                }
+                HotkeyAction::SwitchChinese => {
+                    info!("hotkey triggered, switch to chinese ime.");
+                    let _ = ffi::switch_input_method(u32::from(config.locale_zh));
+                    let _ = ffi::switch_input_mode(1);
+                }
+            }
         }
     }
 }
