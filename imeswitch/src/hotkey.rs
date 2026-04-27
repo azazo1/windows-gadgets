@@ -107,10 +107,7 @@ fn consume_synthetic_alt_event(state: &mut HotkeyState, key: Key, is_press: bool
     true
 }
 
-fn mark_alt_combo(
-    alt: &mut AltKeyState,
-    inject_flag: &mut bool,
-) {
+fn mark_alt_combo(alt: &mut AltKeyState, inject_flag: &mut bool) {
     if alt.down && !alt.passthrough {
         alt.passthrough = true;
         alt.synthetic_presses = alt.synthetic_presses.saturating_add(1);
