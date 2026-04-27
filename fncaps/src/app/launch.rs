@@ -9,8 +9,7 @@ fn open_with_default_app(path: &str) -> io::Result<()> {
     let mut path = PathBuf::from(path);
     if !path.is_absolute() {
         path = which::which(path)
-            .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?
-            .into();
+            .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
     }
     let Some(path) = path.to_str().map(str::to_string) else {
         return Err(io::Error::new(
@@ -21,7 +20,7 @@ fn open_with_default_app(path: &str) -> io::Result<()> {
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     Command::new("C:\\Windows\\system32\\cmd.exe")
         .creation_flags(CREATE_NO_WINDOW)
-        .args(&["/C", "start", "", &path])
+        .args(["/C", "start", "", &path])
         .spawn()?;
     Ok(())
 }
