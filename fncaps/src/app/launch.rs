@@ -1,15 +1,9 @@
-use std::{
-    io,
-    os::windows::process::CommandExt,
-    path::PathBuf,
-    process::Command,
-};
+use std::{io, os::windows::process::CommandExt, path::PathBuf, process::Command};
 
 fn open_with_default_app(path: &str) -> io::Result<()> {
     let mut path = PathBuf::from(path);
     if !path.is_absolute() {
-        path = which::which(path)
-            .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
+        path = which::which(path).map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
     }
     let Some(path) = path.to_str().map(str::to_string) else {
         return Err(io::Error::new(

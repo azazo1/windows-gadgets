@@ -21,7 +21,11 @@ mod app {
         )]
         no_ime_resetting: bool,
 
-        #[arg(long, default_value_t = false, help = "禁用: Esc / Ctrl+[ 快捷切英文（不影响左右 Alt）")]
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "禁用: Esc / Ctrl+[ 快捷切英文（不影响左右 Alt）"
+        )]
         no_escape_switching: bool,
 
         #[arg(

@@ -85,27 +85,28 @@ fn event_callback(event: Event) -> Option<Event> {
             return Some(event);
         }
 
-        if state.caps_lock_pressing && is_pressing
+        if state.caps_lock_pressing
+            && is_pressing
             && let Some(rule) = HOTKEY_CONFIG
                 .get()
                 .and_then(|cfg| cfg.resolve(key, state.lshift_pressing))
-            {
-                if rule.pending {
-                    state.pending_key = Some(key);
-                }
-                state.operations = true;
-                action = rule.action.clone();
-                suppress = rule.suppress;
-                tracing::info!(
-                    target: "fncaps::hotkey",
-                    ?key,
-                    ?rule.action,
-                    pending = rule.pending,
-                    suppress = rule.suppress,
-                    rule = %rule.description,
-                    "matched configured caps binding"
-                );
+        {
+            if rule.pending {
+                state.pending_key = Some(key);
             }
+            state.operations = true;
+            action = rule.action.clone();
+            suppress = rule.suppress;
+            tracing::info!(
+                target: "fncaps::hotkey",
+                ?key,
+                ?rule.action,
+                pending = rule.pending,
+                suppress = rule.suppress,
+                rule = %rule.description,
+                "matched configured caps binding"
+            );
+        }
 
         if matches!(action, Action::SwitchIme)
             && !is_pressing

@@ -55,6 +55,7 @@ pub fn current_layout_id() -> Option<u16> {
 /// 对微软拼音常见语义：
 /// - `bit0 == 0`：英文
 /// - `bit0 == 1`：中文
+///
 /// 返回 `None` 表示无法拿到 IME 默认窗口。
 pub fn get_input_mode() -> Option<isize> {
     let hwnd = foreground_window()?;
