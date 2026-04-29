@@ -2,24 +2,58 @@
 
 type Hwnd = isize;
 type Lresult = isize;
+type Hmonitor = isize;
 
 const WM_INPUTLANGCHANGEREQUEST: u32 = 0x0050;
 const WM_IME_CONTROL: u32 = 0x0283;
 const KEYEVENTF_KEYUP: u32 = 0x0002;
+const DWMWA_EXTENDED_FRAME_BOUNDS: u32 = 9;
+const MONITOR_DEFAULTTONEAREST: u32 = 2;
+const FULLSCREEN_TOLERANCE: i32 = 1;
 
 const IMC_GETCONVERSIONMODE: usize = 0x0001;
 const IMC_SETCONVERSIONMODE: usize = 0x0002;
 const VK_LMENU: u8 = 0xA4;
 const VK_RMENU: u8 = 0xA5;
 
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct Rect {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct MonitorInfo {
+    cb_size: u32,
+    rc_monitor: Rect,
+    rc_work: Rect,
+    dw_flags: u32,
+}
+
 #[link(name = "user32")]
 unsafe extern "system" {
     fn GetForegroundWindow() -> Hwnd;
     fn GetWindowThreadProcessId(hwnd: Hwnd, process_id: *mut u32) -> u32;
     fn GetKeyboardLayout(thread_id: u32) -> isize;
+    fn GetMonitorInfoW(monitor: Hmonitor, monitor_info: *mut MonitorInfo) -> i32;
+    fn MonitorFromWindow(hwnd: Hwnd, flags: u32) -> Hmonitor;
     fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
     fn SendMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> Lresult;
     fn keybd_event(bvk: u8, bscan: u8, dwflags: u32, dwextrainfo: usize);
+}
+
+#[link(name = "dwmapi")]
+unsafe extern "system" {
+    fn DwmGetWindowAttribute(
+        hwnd: Hwnd,
+        dwattribute: u32,
+        pvattribute: *mut Rect,
+        cbattribute: u32,
+    ) -> i32;
 }
 
 #[link(name = "imm32")]
@@ -33,6 +67,51 @@ unsafe extern "system" {
 pub fn foreground_window() -> Option<Hwnd> {
     let hwnd = unsafe { GetForegroundWindow() };
     (hwnd != 0).then_some(hwnd)
+}
+
+fn roughly_matches(a: i32, b: i32) -> bool {
+    (a - b).abs() <= FULLSCREEN_TOLERANCE
+}
+
+/// 判断前台窗口是否基本覆盖整块显示器。
+///
+/// 这里使用窗口可见边界与显示器边界做比较，主要用于识别游戏或全屏应用，
+/// 以便让左右 `Alt` 直接透传给前台程序。
+pub fn foreground_window_is_fullscreen() -> bool {
+    let Some(hwnd) = foreground_window() else {
+        return false;
+    };
+
+    let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+    if monitor == 0 {
+        return false;
+    }
+
+    let mut monitor_info = MonitorInfo {
+        cb_size: std::mem::size_of::<MonitorInfo>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetMonitorInfoW(monitor, &mut monitor_info) } == 0 {
+        return false;
+    }
+
+    let mut frame = Rect::default();
+    if unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut frame,
+            std::mem::size_of::<Rect>() as u32,
+        )
+    } != 0
+    {
+        return false;
+    }
+
+    roughly_matches(frame.left, monitor_info.rc_monitor.left)
+        && roughly_matches(frame.top, monitor_info.rc_monitor.top)
+        && roughly_matches(frame.right, monitor_info.rc_monitor.right)
+        && roughly_matches(frame.bottom, monitor_info.rc_monitor.bottom)
 }
 
 /// 获取前台窗口所属线程的输入法布局 ID（HKL 低 16 位）。
