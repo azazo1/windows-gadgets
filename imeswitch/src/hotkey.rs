@@ -50,6 +50,21 @@ fn is_right_alt_key(key: Key) -> bool {
     matches!(key, Key::AltGr)
 }
 
+fn is_alt_passthrough_combo_key(key: Key) -> bool {
+    !matches!(
+        key,
+        Key::Alt
+            | Key::AltGr
+            | Key::ControlLeft
+            | Key::ControlRight
+            | Key::ShiftLeft
+            | Key::ShiftRight
+            | Key::MetaLeft
+            | Key::MetaRight
+            | Key::CapsLock
+    )
+}
+
 fn consume_escape_hotkey(
     state: &mut HotkeyState,
     escape_switching_enabled: bool,
@@ -226,8 +241,10 @@ pub fn spawn_hotkey_listener(
                                 }
                                 suppress = true;
                             } else {
-                                mark_alt_combo(&mut state.left_alt, &mut inject_left_down);
-                                mark_alt_combo(&mut state.right_alt, &mut inject_right_down);
+                                if is_alt_passthrough_combo_key(key) {
+                                    mark_alt_combo(&mut state.left_alt, &mut inject_left_down);
+                                    mark_alt_combo(&mut state.right_alt, &mut inject_right_down);
+                                }
                                 emitted_action =
                                     consume_escape_hotkey(&mut state, escape_switching_enabled);
                             }
@@ -307,4 +324,22 @@ pub fn spawn_hotkey_listener(
     });
 
     Some(rx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_alt_passthrough_combo_key;
+    use rdev::Key;
+
+    #[test]
+    fn alt_passthrough_requires_non_modifier_key() {
+        assert!(is_alt_passthrough_combo_key(Key::Escape));
+        assert!(is_alt_passthrough_combo_key(Key::LeftBracket));
+        assert!(!is_alt_passthrough_combo_key(Key::Alt));
+        assert!(!is_alt_passthrough_combo_key(Key::AltGr));
+        assert!(!is_alt_passthrough_combo_key(Key::ControlLeft));
+        assert!(!is_alt_passthrough_combo_key(Key::ShiftRight));
+        assert!(!is_alt_passthrough_combo_key(Key::MetaLeft));
+        assert!(!is_alt_passthrough_combo_key(Key::CapsLock));
+    }
 }
