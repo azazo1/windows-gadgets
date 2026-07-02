@@ -253,6 +253,23 @@ fn handle_grabbed_key_event(
     effects
 }
 
+fn handle_grabbed_wheel_event(
+    state: &mut HotkeyState,
+    alt_capture_enabled: bool,
+) -> GrabEffects {
+    let mut effects = GrabEffects::default();
+
+    if !alt_capture_enabled {
+        release_alt_capture(&mut state.left_alt, &mut effects.inject_left_down);
+        release_alt_capture(&mut state.right_alt, &mut effects.inject_right_down);
+        return effects;
+    }
+
+    mark_alt_combo(&mut state.left_alt, &mut effects.inject_left_down);
+    mark_alt_combo(&mut state.right_alt, &mut effects.inject_right_down);
+    effects
+}
+
 pub fn spawn_hotkey_listener(
     escape_switching_enabled: bool,
     alt_switching_enabled: bool,
@@ -322,28 +339,44 @@ pub fn spawn_hotkey_listener(
         let state = Arc::clone(&state);
         move || {
             let callback = move |event: Event| -> Option<Event> {
-                let Some((key, is_press)) = (match event.event_type {
-                    EventType::KeyPress(key) => Some((key, true)),
-                    EventType::KeyRelease(key) => Some((key, false)),
-                    _ => None,
-                }) else {
-                    return Some(event);
-                };
-
-                let alt_capture_enabled = !ffi::foreground_window_is_fullscreen();
-
-                let effects = {
-                    let mut state = match state.lock() {
-                        Ok(guard) => guard,
-                        Err(_) => return Some(event),
-                    };
-                    handle_grabbed_key_event(
-                        &mut state,
-                        key,
-                        is_press,
-                        escape_switching_enabled,
-                        alt_capture_enabled,
-                    )
+                let effects = match event.event_type {
+                    EventType::KeyPress(key) => {
+                        let alt_capture_enabled = !ffi::foreground_window_is_fullscreen();
+                        let mut state = match state.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => return Some(event),
+                        };
+                        handle_grabbed_key_event(
+                            &mut state,
+                            key,
+                            true,
+                            escape_switching_enabled,
+                            alt_capture_enabled,
+                        )
+                    }
+                    EventType::KeyRelease(key) => {
+                        let alt_capture_enabled = !ffi::foreground_window_is_fullscreen();
+                        let mut state = match state.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => return Some(event),
+                        };
+                        handle_grabbed_key_event(
+                            &mut state,
+                            key,
+                            false,
+                            escape_switching_enabled,
+                            alt_capture_enabled,
+                        )
+                    }
+                    EventType::Wheel { .. } => {
+                        let alt_capture_enabled = !ffi::foreground_window_is_fullscreen();
+                        let mut state = match state.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => return Some(event),
+                        };
+                        handle_grabbed_wheel_event(&mut state, alt_capture_enabled)
+                    }
+                    _ => return Some(event),
                 };
 
                 if effects.inject_left_down {
@@ -377,7 +410,8 @@ pub fn spawn_hotkey_listener(
 #[cfg(test)]
 mod tests {
     use super::{
-        HotkeyAction, HotkeyState, handle_grabbed_key_event, is_alt_passthrough_combo_key,
+        HotkeyAction, HotkeyState, handle_grabbed_key_event, handle_grabbed_wheel_event,
+        is_alt_passthrough_combo_key,
     };
     use rdev::Key;
 
@@ -430,6 +464,24 @@ mod tests {
 
         let release = handle_grabbed_key_event(&mut state, Key::Alt, false, true, false);
         assert!(!release.suppress);
+        assert_eq!(release.action, None);
+    }
+
+    #[test]
+    fn alt_wheel_passthrough_hands_alt_to_system() {
+        let mut state = HotkeyState::default();
+
+        let press = handle_grabbed_key_event(&mut state, Key::Alt, true, true, true);
+        assert!(press.suppress);
+
+        let wheel = handle_grabbed_wheel_event(&mut state, true);
+        assert!(!wheel.suppress);
+        assert!(wheel.inject_left_down);
+        assert_eq!(wheel.action, None);
+
+        let release = handle_grabbed_key_event(&mut state, Key::Alt, false, true, true);
+        assert!(release.suppress);
+        assert!(release.inject_left_up);
         assert_eq!(release.action, None);
     }
 }
