@@ -42,6 +42,13 @@ mod app {
         )]
         no_ensure_chinese_mode: bool,
 
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "禁用: 自动保持 CapsLock 为非大写状态"
+        )]
+        no_ensure_lowercase_state: bool,
+
         #[arg(long, default_value_t = 1033, help = "英文输入法 locale（默认 1033）")]
         locale_en: u32,
 
@@ -61,6 +68,7 @@ mod app {
                 locale_en: args.locale_en,
                 locale_zh: args.locale_zh,
                 ensure_chinese_mode: !args.no_ensure_chinese_mode,
+                ensure_lowercase_state: !args.no_ensure_lowercase_state,
                 poll_interval: Duration::from_millis(args.poll_ms.max(10)),
             }
         }

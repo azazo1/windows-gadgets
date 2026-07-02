@@ -13,6 +13,7 @@ const FULLSCREEN_TOLERANCE: i32 = 1;
 
 const IMC_GETCONVERSIONMODE: usize = 0x0001;
 const IMC_SETCONVERSIONMODE: usize = 0x0002;
+const VK_CAPITAL: u8 = 0x14;
 const VK_LMENU: u8 = 0xA4;
 const VK_RMENU: u8 = 0xA5;
 
@@ -39,6 +40,7 @@ unsafe extern "system" {
     fn GetForegroundWindow() -> Hwnd;
     fn GetWindowThreadProcessId(hwnd: Hwnd, process_id: *mut u32) -> u32;
     fn GetKeyboardLayout(thread_id: u32) -> isize;
+    fn GetKeyState(n_virt_key: i32) -> i16;
     fn GetMonitorInfoW(monitor: Hmonitor, monitor_info: *mut MonitorInfo) -> i32;
     fn MonitorFromWindow(hwnd: Hwnd, flags: u32) -> Hmonitor;
     fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
@@ -190,5 +192,20 @@ pub fn emit_alt_key(is_left: bool, key_up: bool) {
     let flags = if key_up { KEYEVENTF_KEYUP } else { 0 };
     unsafe {
         keybd_event(vk, 0, flags, 0);
+    }
+}
+
+pub fn caps_lock_is_enabled() -> bool {
+    unsafe { GetKeyState(i32::from(VK_CAPITAL)) & 1 != 0 }
+}
+
+pub fn disable_caps_lock() {
+    if !caps_lock_is_enabled() {
+        return;
+    }
+
+    unsafe {
+        keybd_event(VK_CAPITAL, 0, 0, 0);
+        keybd_event(VK_CAPITAL, 0, KEYEVENTF_KEYUP, 0);
     }
 }

@@ -20,6 +20,7 @@
 - `Alt + 非修饰键` 组合保持系统原本行为
 - `Alt + 鼠标滚轮` 组合保持系统原本行为
 - 当前布局已经是中文输入法时，后台自动确保处于中文模式
+- `CapsLock` 开启后自动恢复为非大写状态
 
 注意：
 
@@ -30,6 +31,7 @@
 - `--no-escape-switching` 只会关闭 `Esc` / `Ctrl+[`
 - `--no-alt-switching` 会完全关闭左右 `Alt` 的输入法切换功能
 - `--no-ensure-chinese-mode` 会关闭“中文布局下自动拉回中文模式”的守护
+- `--no-ensure-lowercase-state` 会关闭 `CapsLock` 非大写状态守护
 
 安装：
 
@@ -50,6 +52,7 @@ cargo run -p imeswitch --release --
 --no-escape-switching      禁用 Esc / Ctrl+[ 切英文
 --no-alt-switching         禁用单独按左/右 Alt 切换输入法
 --no-ensure-chinese-mode   禁用中文输入法布局下自动保持中文模式
+--no-ensure-lowercase-state 禁用自动保持 CapsLock 非大写状态
 --locale-en <ID>           英文输入法 locale，默认 1033
 --locale-zh <ID>           中文输入法 locale，默认 2052
 --poll-ms <MS>             轮询间隔，默认 300ms

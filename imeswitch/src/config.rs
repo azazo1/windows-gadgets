@@ -8,5 +8,6 @@ pub struct Config {
     pub locale_en: u32,
     pub locale_zh: u16,
     pub ensure_chinese_mode: bool,
+    pub ensure_lowercase_state: bool,
     pub poll_interval: Duration,
 }

@@ -37,6 +37,13 @@ impl Runner {
             });
         }
 
+        if self.config.ensure_lowercase_state {
+            let config = Arc::clone(&self.config);
+            tasks.spawn(async move {
+                Self::run_lowercase_state_guard(config).await;
+            });
+        }
+
         if self.config.ime_resetting {
             let config = Arc::clone(&self.config);
             tasks.spawn(async move {
@@ -82,6 +89,17 @@ impl Runner {
 
             if mode & 0x01 == 0 {
                 let _ = ffi::switch_input_mode(1);
+            }
+        }
+    }
+
+    async fn run_lowercase_state_guard(config: Arc<Config>) {
+        let mut ticker = interval(config.poll_interval);
+        loop {
+            ticker.tick().await;
+            if ffi::caps_lock_is_enabled() {
+                info!("caps lock is enabled, disable uppercase state.");
+                ffi::disable_caps_lock();
             }
         }
     }
