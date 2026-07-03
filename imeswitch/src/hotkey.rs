@@ -66,6 +66,13 @@ fn is_alt_passthrough_combo_key(key: Key) -> bool {
     )
 }
 
+fn is_alt_passthrough_mouse_event(event_type: &EventType) -> bool {
+    matches!(
+        event_type,
+        EventType::ButtonPress(_) | EventType::ButtonRelease(_) | EventType::Wheel { .. }
+    )
+}
+
 fn consume_escape_hotkey(
     state: &mut HotkeyState,
     escape_switching_enabled: bool,
@@ -253,7 +260,7 @@ fn handle_grabbed_key_event(
     effects
 }
 
-fn handle_grabbed_wheel_event(
+fn handle_grabbed_mouse_passthrough_event(
     state: &mut HotkeyState,
     alt_capture_enabled: bool,
 ) -> GrabEffects {
@@ -368,13 +375,13 @@ pub fn spawn_hotkey_listener(
                             alt_capture_enabled,
                         )
                     }
-                    EventType::Wheel { .. } => {
+                    event_type if is_alt_passthrough_mouse_event(&event_type) => {
                         let alt_capture_enabled = !ffi::foreground_window_is_fullscreen();
                         let mut state = match state.lock() {
                             Ok(guard) => guard,
                             Err(_) => return Some(event),
                         };
-                        handle_grabbed_wheel_event(&mut state, alt_capture_enabled)
+                        handle_grabbed_mouse_passthrough_event(&mut state, alt_capture_enabled)
                     }
                     _ => return Some(event),
                 };
@@ -410,10 +417,11 @@ pub fn spawn_hotkey_listener(
 #[cfg(test)]
 mod tests {
     use super::{
-        HotkeyAction, HotkeyState, handle_grabbed_key_event, handle_grabbed_wheel_event,
-        is_alt_passthrough_combo_key,
+        HotkeyAction, HotkeyState, handle_grabbed_key_event,
+        handle_grabbed_mouse_passthrough_event, is_alt_passthrough_combo_key,
+        is_alt_passthrough_mouse_event,
     };
-    use rdev::Key;
+    use rdev::{Button, EventType, Key};
 
     #[test]
     fn alt_passthrough_requires_non_modifier_key() {
@@ -425,6 +433,24 @@ mod tests {
         assert!(!is_alt_passthrough_combo_key(Key::ShiftRight));
         assert!(!is_alt_passthrough_combo_key(Key::MetaLeft));
         assert!(!is_alt_passthrough_combo_key(Key::CapsLock));
+    }
+
+    #[test]
+    fn alt_passthrough_mouse_events_cover_buttons_and_wheel() {
+        assert!(is_alt_passthrough_mouse_event(&EventType::ButtonPress(
+            Button::Left
+        )));
+        assert!(is_alt_passthrough_mouse_event(&EventType::ButtonRelease(
+            Button::Right
+        )));
+        assert!(is_alt_passthrough_mouse_event(&EventType::Wheel {
+            delta_x: 0,
+            delta_y: 1,
+        }));
+        assert!(!is_alt_passthrough_mouse_event(&EventType::MouseMove {
+            x: 1.0,
+            y: 1.0,
+        }));
     }
 
     #[test]
@@ -468,16 +494,16 @@ mod tests {
     }
 
     #[test]
-    fn alt_wheel_passthrough_hands_alt_to_system() {
+    fn alt_mouse_passthrough_hands_alt_to_system() {
         let mut state = HotkeyState::default();
 
         let press = handle_grabbed_key_event(&mut state, Key::Alt, true, true, true);
         assert!(press.suppress);
 
-        let wheel = handle_grabbed_wheel_event(&mut state, true);
-        assert!(!wheel.suppress);
-        assert!(wheel.inject_left_down);
-        assert_eq!(wheel.action, None);
+        let mouse = handle_grabbed_mouse_passthrough_event(&mut state, true);
+        assert!(!mouse.suppress);
+        assert!(mouse.inject_left_down);
+        assert_eq!(mouse.action, None);
 
         let release = handle_grabbed_key_event(&mut state, Key::Alt, false, true, true);
         assert!(release.suppress);
