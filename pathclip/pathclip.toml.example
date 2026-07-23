@@ -1,0 +1,27 @@
+# 自动转换纯文本时使用的 profile. 设置为空字符串可关闭自动转换.
+auto_profile = "slash"
+
+# 将反斜杠转换为正斜杠.
+[profiles.slash]
+# 设置为空字符串或省略此项可禁用热键.
+hotkey = ""
+steps = [
+  { type = "regex", pattern = '^"(.*)"$', replacement = '$1' },
+  { type = "forward-slash" },
+]
+
+# 将 Windows 盘符路径转换为 WSL 路径.
+[profiles.wsl]
+hotkey = ""
+steps = [
+  { type = "regex", pattern = '^"(.*)"$', replacement = '$1' },
+  { type = "wsl" },
+]
+
+# 将 Windows 路径转换为 file URI.
+[profiles.file-uri]
+hotkey = ""
+steps = [
+  { type = "regex", pattern = '^"(.*)"$', replacement = '$1' },
+  { type = "file-uri" },
+]

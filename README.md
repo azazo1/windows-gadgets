@@ -6,6 +6,37 @@
 
 - `imeswitch`：输入法切换守护进程
 - `fncaps`：把 `CapsLock` 扩展成一组高频快捷键，详见 [fncaps/README.md](/D:/pjs/rust/windows-gadgets/fncaps/README.md)
+- `pathclip`: 自动转换剪贴板中的 Windows 路径, 详见 [pathclip/README.md](/D:/pjs/rust/windows-gadgets/pathclip/README.md)
+
+安装全部工具:
+
+```shell
+just install
+```
+
+## pathclip
+
+`pathclip` 默认将剪贴板中的 Windows 绝对路径转换为正斜杠格式. 它支持 WSL 路径, file URI, 正则转换链和可配置全局热键.
+
+自动模式不会改写资源管理器复制的文件对象. 只有按下 profile 对应热键时, 文件对象才会被转换成路径文本.
+
+安装:
+
+```shell
+cargo install --path pathclip
+```
+
+运行:
+
+```shell
+pathclip
+```
+
+默认配置路径为 `~/.config/pathclip/config.toml`. 可以通过以下命令查看完整默认配置:
+
+```shell
+pathclip --print-default-config
+```
 
 ## imeswitch
 
