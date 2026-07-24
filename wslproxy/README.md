@@ -49,7 +49,7 @@ port = 2222
 - `name`: 唯一规则名.
 - `distro`: WSL 发行版名, 例如 `Ubuntu`.
 - `allow`: 允许来源的 IPv4 CIDR 列表. 空列表和 IPv6 CIDR 无效.
-- `listen.address`: 要绑定的 Windows IPv4 地址.
+- `listen.address`: 要绑定的 Windows IPv4 地址. 使用 `0.0.0.0` 监听全部 IPv4 网卡.
 - `listen.interface`: 可替代 `listen.address`, 使用精确 Windows 网卡名称解析唯一 IPv4 地址.
 - `listen.port`: Windows 监听 TCP 端口.
 - `target.mode`: `wsl-ip` 或 `localhost`.

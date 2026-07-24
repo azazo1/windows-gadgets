@@ -197,9 +197,6 @@ fn compile_forward(file: ForwardFile) -> Result<ForwardRule> {
         (Some(address), None) => {
             let address = Ipv4Addr::from_str(address.trim())
                 .with_context(|| format!("规则 `{name}` 的监听地址无效"))?;
-            if address.is_unspecified() {
-                bail!("规则 `{name}` 的监听地址不能是 0.0.0.0");
-            }
             ListenSource::Address(address)
         }
         (None, Some(interface)) => ListenSource::Interface(required_value("网卡名", interface)?),
@@ -306,6 +303,18 @@ mod tests {
         assert!(matches!(
             rule.listen.source,
             ListenSource::Address(address) if address == Ipv4Addr::new(192, 168, 137, 1)
+        ));
+    }
+
+    #[test]
+    fn permits_an_unspecified_listen_address() {
+        let source = base_rule().replace("192.168.137.1", "0.0.0.0");
+        let settings = parse(&source);
+        let rule = &settings.forwards[0];
+
+        assert!(matches!(
+            rule.listen.source,
+            ListenSource::Address(address) if address == Ipv4Addr::UNSPECIFIED
         ));
     }
 
