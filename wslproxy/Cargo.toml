@@ -2,16 +2,22 @@
 name = "wslproxy"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
+
+[features]
+bundled-agent = []
 
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 dirs-next = "2"
+futures = "0.3"
 ipnet = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["compat"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 windows = { version = "0.59", features = [
@@ -20,3 +26,5 @@ windows = { version = "0.59", features = [
     "Win32_NetworkManagement_Ndis",
     "Win32_Networking_WinSock",
 ] }
+yamux = "0.14"
+wslproxy-protocol = { path = "../wslproxy-protocol" }

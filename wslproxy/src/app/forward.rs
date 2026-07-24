@@ -24,8 +24,12 @@ struct ResolvedForward {
     listen: SocketAddrV4,
 }
 
-pub async fn run(settings: Settings) -> Result<()> {
-    let forwards = resolve_forwards(&settings)?;
+pub(crate) struct PreparedForwards {
+    listeners: Vec<(ResolvedForward, TcpListener)>,
+}
+
+pub async fn prepare(settings: &Settings) -> Result<PreparedForwards> {
+    let forwards = resolve_forwards(settings)?;
     let mut listeners = Vec::with_capacity(forwards.len());
 
     for forward in forwards {
@@ -36,48 +40,33 @@ pub async fn run(settings: Settings) -> Result<()> {
         listeners.push((forward, listener));
     }
 
-    let resolver = Arc::new(TargetResolver::new(SystemWslControl));
-    let (shutdown_sender, _) = watch::channel(false);
-    let mut tasks = JoinSet::new();
+    Ok(PreparedForwards { listeners })
+}
 
-    for (forward, listener) in listeners {
+pub fn launch(
+    prepared: PreparedForwards,
+    settings: &Settings,
+    shutdown: watch::Receiver<bool>,
+    tasks: &mut JoinSet<Result<()>>,
+) -> usize {
+    let resolver = Arc::new(TargetResolver::new(SystemWslControl));
+    let rules = prepared.listeners.len();
+    for (forward, listener) in prepared.listeners {
         tasks.spawn(run_listener(
             listener,
             forward,
             Arc::clone(&resolver),
             settings.daemon.connect_timeout,
             settings.daemon.max_connections_per_rule,
-            shutdown_sender.subscribe(),
+            shutdown.clone(),
         ));
     }
 
-    info!(rules = settings.forwards.len(), "wslproxy 已开始运行");
-    let early_error = tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            info!("已收到退出信号");
-            None
-        }
-        task = tasks.join_next() => task_result_to_error(task),
-    };
-
-    let _ = shutdown_sender.send(true);
-    let mut shutdown_error = early_error;
-    while let Some(task) = tasks.join_next().await {
-        if shutdown_error.is_none() {
-            shutdown_error = task_result_to_error(Some(task));
-        }
-    }
-
-    if let Some(error) = shutdown_error {
-        return Err(error);
-    }
-
-    info!("wslproxy 已停止");
-    Ok(())
+    rules
 }
 
-pub async fn check(settings: Settings) -> Result<()> {
-    let forwards = resolve_forwards(&settings)?;
+pub async fn check(settings: &Settings) -> Result<usize> {
+    let forwards = resolve_forwards(settings)?;
     let resolver = Arc::new(TargetResolver::new(SystemWslControl));
 
     for forward in &forwards {
@@ -96,8 +85,7 @@ pub async fn check(settings: Settings) -> Result<()> {
         );
     }
 
-    info!(rules = forwards.len(), "全部规则检查通过");
-    Ok(())
+    Ok(forwards.len())
 }
 
 fn resolve_forwards(settings: &Settings) -> Result<Vec<ResolvedForward>> {
@@ -254,15 +242,6 @@ async fn relay_connection(
     copy_bidirectional(client, target)
         .await
         .context("TCP 双向转发失败")
-}
-
-fn task_result_to_error(task: Option<Result<Result<()>, tokio::task::JoinError>>) -> Option<anyhow::Error> {
-    match task {
-        Some(Ok(Ok(()))) => Some(anyhow!("转发监听任务意外结束")),
-        Some(Ok(Err(error))) => Some(error),
-        Some(Err(error)) => Some(anyhow!("转发监听任务异常退出: {error}")),
-        None => Some(anyhow!("没有可运行的转发监听任务")),
-    }
 }
 
 #[cfg(test)]

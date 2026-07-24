@@ -18,6 +18,7 @@ const DEFAULT_MAX_CONNECTIONS_PER_RULE: usize = 128;
 pub struct Settings {
     pub daemon: DaemonSettings,
     pub forwards: Vec<ForwardRule>,
+    pub reverse_forwards: Vec<ReverseForwardRule>,
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +54,24 @@ pub struct TargetSpec {
     pub port: u16,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReverseForwardRule {
+    pub name: String,
+    pub distro: String,
+    pub listen: ReverseListenSpec,
+    pub target: ReverseTargetSpec,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReverseListenSpec {
+    pub port: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReverseTargetSpec {
+    pub port: u16,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetMode {
     WslIp,
@@ -65,6 +84,8 @@ struct SettingsFile {
     daemon: DaemonFile,
     #[serde(default)]
     forwards: Vec<ForwardFile>,
+    #[serde(default)]
+    reverse_forwards: Vec<ReverseForwardFile>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,6 +129,24 @@ struct TargetFile {
 }
 
 #[derive(Debug, Deserialize)]
+struct ReverseForwardFile {
+    name: String,
+    distro: String,
+    listen: ReverseListenFile,
+    target: ReverseTargetFile,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReverseListenFile {
+    port: u16,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReverseTargetFile {
+    port: u16,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum TargetModeFile {
     WslIp,
@@ -121,7 +160,12 @@ impl Settings {
             .with_context(|| format!("无法读取配置文件: {}", path.display()))?;
         let settings = Self::parse(&source)
             .with_context(|| format!("配置文件无效: {}", path.display()))?;
-        info!(path = %path.display(), rules = settings.forwards.len(), "已加载转发配置");
+        info!(
+            path = %path.display(),
+            forward_rules = settings.forwards.len(),
+            reverse_rules = settings.reverse_forwards.len(),
+            "已加载转发配置"
+        );
         Ok(settings)
     }
 
@@ -131,7 +175,7 @@ impl Settings {
 
     pub(super) fn parse(source: &str) -> Result<Self> {
         let file: SettingsFile = toml::from_str(source).context("无法解析 TOML 配置")?;
-        if file.forwards.is_empty() {
+        if file.forwards.is_empty() && file.reverse_forwards.is_empty() {
             bail!("至少需要一条转发规则");
         }
         if file.daemon.connect_timeout_seconds == 0 {
@@ -145,6 +189,8 @@ impl Settings {
         let mut fixed_endpoints = HashSet::new();
         let mut interface_endpoints = HashSet::new();
         let mut forwards = Vec::with_capacity(file.forwards.len());
+        let mut reverse_forwards = Vec::with_capacity(file.reverse_forwards.len());
+        let mut reverse_endpoints = HashSet::new();
 
         for forward in file.forwards {
             let rule = compile_forward(forward)?;
@@ -170,14 +216,54 @@ impl Settings {
             forwards.push(rule);
         }
 
+        for reverse_forward in file.reverse_forwards {
+            let rule = compile_reverse_forward(reverse_forward)?;
+            if !names.insert(rule.name.clone()) {
+                bail!("规则名重复: {}", rule.name);
+            }
+
+            let endpoint = (rule.distro.to_ascii_lowercase(), rule.listen.port);
+            if !reverse_endpoints.insert(endpoint) {
+                bail!(
+                    "反向规则在发行版 `{}` 上重复监听端口: {}",
+                    rule.distro,
+                    rule.listen.port
+                );
+            }
+            reverse_forwards.push(rule);
+        }
+
         Ok(Self {
             daemon: DaemonSettings {
                 connect_timeout: Duration::from_secs(file.daemon.connect_timeout_seconds),
                 max_connections_per_rule: file.daemon.max_connections_per_rule,
             },
             forwards,
+            reverse_forwards,
         })
     }
+}
+
+fn compile_reverse_forward(file: ReverseForwardFile) -> Result<ReverseForwardRule> {
+    let name = required_value("规则名", file.name)?;
+    let distro = required_value("发行版名", file.distro)?;
+    if file.listen.port == 0 {
+        bail!("反向规则 `{name}` 的监听端口必须大于 0");
+    }
+    if file.target.port == 0 {
+        bail!("反向规则 `{name}` 的目标端口必须大于 0");
+    }
+
+    Ok(ReverseForwardRule {
+        name,
+        distro,
+        listen: ReverseListenSpec {
+            port: file.listen.port,
+        },
+        target: ReverseTargetSpec {
+            port: file.target.port,
+        },
+    })
 }
 
 fn compile_forward(file: ForwardFile) -> Result<ForwardRule> {
@@ -351,5 +437,106 @@ mod tests {
         let settings = parse(&source);
 
         assert_eq!(settings.forwards[0].target.mode, TargetMode::Localhost);
+    }
+
+    #[test]
+    fn parses_forward_and_reverse_rules_together() {
+        let source = format!(
+            "{}\n\n            [[reverse_forwards]]\n            name = \"windows-http\"\n            distro = \"Ubuntu\"\n\n            [reverse_forwards.listen]\n            port = 20002\n\n            [reverse_forwards.target]\n            port = 8080\n",
+            base_rule()
+        );
+        let settings = parse(&source);
+
+        assert_eq!(settings.forwards.len(), 1);
+        assert_eq!(settings.reverse_forwards.len(), 1);
+        assert_eq!(settings.reverse_forwards[0].listen.port, 20002);
+        assert_eq!(settings.reverse_forwards[0].target.port, 8080);
+    }
+
+    #[test]
+    fn supports_reverse_only_settings() {
+        let source = r#"
+            [[reverse_forwards]]
+            name = "windows-http"
+            distro = "Ubuntu"
+
+            [reverse_forwards.listen]
+            port = 20002
+
+            [reverse_forwards.target]
+            port = 20002
+        "#;
+        let settings = parse(source);
+
+        assert!(settings.forwards.is_empty());
+        assert_eq!(settings.reverse_forwards.len(), 1);
+    }
+
+    #[test]
+    fn rejects_cross_direction_name_conflicts() {
+        let source = format!(
+            "{}\n\n            [[reverse_forwards]]\n            name = \"ssh\"\n            distro = \"Ubuntu\"\n\n            [reverse_forwards.listen]\n            port = 20002\n\n            [reverse_forwards.target]\n            port = 20002\n",
+            base_rule()
+        );
+
+        assert!(Settings::parse(&source).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_reverse_listener_ports_per_distro() {
+        let source = r#"
+            [[reverse_forwards]]
+            name = "one"
+            distro = "Ubuntu"
+
+            [reverse_forwards.listen]
+            port = 20002
+
+            [reverse_forwards.target]
+            port = 20002
+
+            [[reverse_forwards]]
+            name = "two"
+            distro = "ubuntu"
+
+            [reverse_forwards.listen]
+            port = 20002
+
+            [reverse_forwards.target]
+            port = 3000
+        "#;
+
+        assert!(Settings::parse(source).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_reverse_ports() {
+        let source = r#"
+            [[reverse_forwards]]
+            name = "windows-http"
+            distro = "Ubuntu"
+
+            [reverse_forwards.listen]
+            port = 0
+
+            [reverse_forwards.target]
+            port = 20002
+        "#;
+
+        assert!(Settings::parse(source).is_err());
+    }
+
+    #[test]
+    fn rejects_reverse_rules_missing_required_sections() {
+        let source = r#"
+            [[reverse_forwards]]
+            name = "windows-http"
+            distro = "Ubuntu"
+
+            [reverse_forwards.listen]
+            port = 20002
+        "#;
+
+        assert!(Settings::parse(source).is_err());
     }
 }

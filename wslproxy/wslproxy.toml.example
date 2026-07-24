@@ -29,3 +29,17 @@ port = 2222
 # [forwards.target]
 # mode = "localhost"
 # port = 3000
+
+# WSL 到 Windows loopback 的反向转发示例.
+# WSL 访问 127.0.0.1:20002 时会转发到 Windows 127.0.0.1:20002.
+# 反向规则需要包含 Linux agent 的 wslproxy 构建, 不会创建 Windows 入站监听器或防火墙规则.
+#
+# [[reverse_forwards]]
+# name = "windows-20002"
+# distro = "Ubuntu"
+#
+# [reverse_forwards.listen]
+# port = 20002
+#
+# [reverse_forwards.target]
+# port = 20002

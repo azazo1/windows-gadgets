@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "wslproxy", version, about = "将 Windows TCP 端口转发到 WSL 服务")]
+#[command(name = "wslproxy", version, about = "管理 Windows 与 WSL 间的 TCP 端口转发")]
 pub struct Cli {
     #[arg(long)]
     pub print_default_config: bool,
@@ -16,7 +16,7 @@ pub struct Cli {
 pub enum Command {
     /// 运行 TCP 转发守护进程.
     Run(ConfigArguments),
-    /// 校验配置和 WSL 目标连通性.
+    /// 校验配置和全部目标连通性.
     Check(ConfigArguments),
 }
 

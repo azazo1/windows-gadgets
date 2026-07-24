@@ -1,4 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["imeswitch", "fncaps", "pathclip", "wslproxy"]
+members = [
+    "imeswitch",
+    "fncaps",
+    "pathclip",
+    "wslproxy",
+    "wslproxy-agent",
+    "wslproxy-protocol",
+]
 default-members = ["imeswitch", "fncaps", "pathclip", "wslproxy"]

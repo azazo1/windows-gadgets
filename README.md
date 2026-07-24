@@ -7,7 +7,7 @@
 - `imeswitch`：输入法切换守护进程
 - `fncaps`: 把 `CapsLock` 扩展成一组高频快捷键, 详见 [fncaps/README.md](fncaps/README.md)
 - `pathclip`: 自动转换剪贴板中的 Windows 路径, 详见 [pathclip/README.md](pathclip/README.md)
-- `wslproxy`: 将指定 Windows TCP 端口转发到 WSL 服务, 详见 [wslproxy/README.md](wslproxy/README.md)
+- `wslproxy`: 支持 Windows 与 WSL 间的双向 TCP 端口映射, 详见 [wslproxy/README.md](wslproxy/README.md)
 
 安装全部工具:
 
@@ -17,15 +17,17 @@ just install
 
 ## wslproxy
 
-`wslproxy` 是一个 Windows 前台守护进程. 它按 TOML 规则监听指定的 Windows IPv4 地址, 并转发到 WSL 发行版中的 TCP 服务.
+`wslproxy` 是一个 Windows 前台守护进程. 它按 TOML 规则支持 Windows IPv4 到 WSL 服务的正向转发, 以及 WSL loopback 到 Windows loopback 服务的反向转发.
 
-它会自动启动目标 WSL 发行版, 在 WSL NAT 地址变化后重新解析目标. Windows 防火墙仍需由用户自行配置.
+它会自动启动目标 WSL 发行版, 在 WSL NAT 地址变化后重新解析正向目标. 反向规则不会创建 Windows 入站监听器或防火墙规则. Windows 防火墙仍需由用户自行配置.
 
 安装:
 
 ```shell
-cargo install --path wslproxy
+just install
 ```
+
+`just install` 会使用 `cargo zigbuild` 构建并内嵌 Linux helper, 因此安装后的 `wslproxy` 默认支持正向和反向规则. 详见 [wslproxy/README.md](wslproxy/README.md).
 
 运行:
 
