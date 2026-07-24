@@ -5,14 +5,35 @@
 ## 包含内容
 
 - `imeswitch`：输入法切换守护进程
-- `fncaps`：把 `CapsLock` 扩展成一组高频快捷键，详见 [fncaps/README.md](/D:/pjs/rust/windows-gadgets/fncaps/README.md)
-- `pathclip`: 自动转换剪贴板中的 Windows 路径, 详见 [pathclip/README.md](/D:/pjs/rust/windows-gadgets/pathclip/README.md)
+- `fncaps`: 把 `CapsLock` 扩展成一组高频快捷键, 详见 [fncaps/README.md](fncaps/README.md)
+- `pathclip`: 自动转换剪贴板中的 Windows 路径, 详见 [pathclip/README.md](pathclip/README.md)
+- `wslproxy`: 将指定 Windows TCP 端口转发到 WSL 服务, 详见 [wslproxy/README.md](wslproxy/README.md)
 
 安装全部工具:
 
 ```shell
 just install
 ```
+
+## wslproxy
+
+`wslproxy` 是一个 Windows 前台守护进程. 它按 TOML 规则监听指定的 Windows IPv4 地址, 并转发到 WSL 发行版中的 TCP 服务.
+
+它会自动启动目标 WSL 发行版, 在 WSL NAT 地址变化后重新解析目标. Windows 防火墙仍需由用户自行配置.
+
+安装:
+
+```shell
+cargo install --path wslproxy
+```
+
+运行:
+
+```shell
+wslproxy run
+```
+
+默认配置路径为 `~/.config/wslproxy/config.toml`. 使用 [wslproxy/wslproxy.toml.example](wslproxy/wslproxy.toml.example) 作为起点.
 
 ## pathclip
 

@@ -1,0 +1,31 @@
+[daemon]
+connect_timeout_seconds = 5
+max_connections_per_rule = 128
+
+[[forwards]]
+name = "ubuntu-ssh"
+distro = "Ubuntu"
+allow = ["192.168.137.0/24"]
+
+[forwards.listen]
+address = "192.168.137.1"
+port = 2222
+
+[forwards.target]
+mode = "wsl-ip"
+port = 2222
+
+# 网卡监听示例. address 和 interface 只能保留一个.
+#
+# [[forwards]]
+# name = "hotspot-web"
+# distro = "Ubuntu"
+# allow = ["192.168.137.0/24"]
+#
+# [forwards.listen]
+# interface = "本地连接* 2"
+# port = 8080
+#
+# [forwards.target]
+# mode = "localhost"
+# port = 3000

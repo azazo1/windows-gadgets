@@ -7,3 +7,4 @@ install:
     cargo install --path fncaps
     cargo install --path imeswitch
     cargo install --path pathclip
+    cargo install --path wslproxy
