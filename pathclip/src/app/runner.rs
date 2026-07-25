@@ -284,6 +284,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn automatic_conversion_only_changes_regular_drive_paths() {
+        let settings = settings(
+            r#"
+                auto_profile = "slash"
+
+                [profiles.slash]
+                steps = [{ type = "forward-slash" }]
+            "#,
+        );
+        let mut runner = runner(
+            settings,
+            MockClipboard::with_text("C:\\a.txt\r\n\\\\server\\share\\b.txt"),
+        );
+
+        runner.handle_clipboard_change().await;
+
+        assert_eq!(
+            runner.clipboard.writes(),
+            vec!["C:/a.txt\r\n\\\\server\\share\\b.txt"]
+        );
+    }
+
+    #[tokio::test]
     async fn hotkey_explicitly_converts_file_objects() {
         let settings = settings(
             r#"
@@ -297,12 +320,40 @@ mod tests {
         let hotkey_id = settings.registered_hotkeys()[0].id();
         let mut runner = runner(
             settings,
-            MockClipboard::with_files(&[r"C:\a.txt", r"D:\b.txt"]),
+            MockClipboard::with_files(&[r"C:\a.txt", r"\\server\share\b.txt"]),
         );
 
         runner.handle_hotkey(hotkey_id).await;
 
-        assert_eq!(runner.clipboard.writes(), vec!["C:/a.txt\r\nD:/b.txt"]);
+        assert_eq!(
+            runner.clipboard.writes(),
+            vec!["C:/a.txt\r\n\\\\server\\share\\b.txt"]
+        );
+    }
+
+    #[tokio::test]
+    async fn hotkey_text_conversion_preserves_unc_paths() {
+        let settings = settings(
+            r#"
+                auto_profile = ""
+
+                [profiles.slash]
+                hotkey = "Ctrl+Shift+V"
+                steps = [{ type = "forward-slash" }]
+            "#,
+        );
+        let hotkey_id = settings.registered_hotkeys()[0].id();
+        let mut runner = runner(
+            settings,
+            MockClipboard::with_text("D:\\a.txt\r\n//server/share/b.txt"),
+        );
+
+        runner.handle_hotkey(hotkey_id).await;
+
+        assert_eq!(
+            runner.clipboard.writes(),
+            vec!["D:/a.txt\r\n//server/share/b.txt"]
+        );
     }
 
     #[tokio::test]

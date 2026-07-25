@@ -4,7 +4,7 @@
 
 ## 行为
 
-- 默认 profile 为 `slash`, 例如 `C:\Users\me\a.txt` 会转换为 `C:/Users/me/a.txt`.
+- 默认 profile 为 `slash`, 例如 `C:\Users\me\a.txt` 会转换为 `C:/Users/me/a.txt`. UNC, `//` 和 `\\?\` 路径保持原样.
 - 自动模式仅处理绝对盘符路径, UNC 路径和扩展长度路径.
 - 多行文本中的每个非空行都必须是路径, 否则整段内容保持不变.
 - 资源管理器复制的文件对象不会被自动改写, 因此仍可正常粘贴文件.
@@ -78,11 +78,13 @@ steps = [
 
 ### forward-slash
 
-将反斜杠转换为正斜杠:
+将普通盘符路径中的反斜杠转换为正斜杠. UNC, `//` 和 `\\?\` 路径保持原样:
 
 ```text
 C:\Users\me\a.txt -> C:/Users/me/a.txt
-\\server\share\a.txt -> //server/share/a.txt
+\\server\share\a.txt -> \\server\share\a.txt
+//server/share/a.txt -> //server/share/a.txt
+\\?\C:\Users\me\a.txt -> \\?\C:\Users\me\a.txt
 ```
 
 ### wsl

@@ -76,7 +76,14 @@ fn apply_profile(profile: &Profile, input: &str) -> Result<String> {
 }
 
 fn to_forward_slash(input: &str) -> String {
-    normalize_extended_path(input).replace('\\', "/")
+    let candidate = strip_outer_quotes(input);
+    if is_extended_path(candidate) || is_unc_path(candidate) {
+        return input.to_string();
+    }
+    if split_drive_path(candidate).is_some() {
+        return input.replace('\\', "/");
+    }
+    input.to_string()
 }
 
 fn to_wsl(input: &str) -> Result<String> {
@@ -130,6 +137,12 @@ fn normalize_extended_path(input: &str) -> String {
         return input[4..].to_string();
     }
     input.to_string()
+}
+
+fn is_extended_path(input: &str) -> bool {
+    input
+        .get(..4)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(r"\\?\"))
 }
 
 fn strip_wsl_unc_prefix(input: &str) -> Option<&str> {
@@ -241,14 +254,45 @@ mod tests {
     }
 
     #[test]
-    fn converts_drive_and_unc_paths_to_forward_slashes() {
+    fn converts_only_regular_drive_paths_to_forward_slashes() {
         let profile = profile("slash", vec![TransformStep::ForwardSlash]);
-        let result = transform_text(&profile, "C:\\a\\b\r\n\\\\server\\share\\c")
-            .unwrap()
-            .unwrap();
+        let input = concat!(
+            "C:\\a\\b\r\n",
+            "C:/a\\b\r\n",
+            "\\\\server\\share\\c\r\n",
+            "//server/share/c\r\n",
+            "\\\\?\\UNC\\server\\share\\d\r\n",
+            "\\\\?\\C:\\long\\path",
+        );
+        let result = transform_text(&profile, input).unwrap().unwrap();
 
-        assert_eq!(result.output, "C:/a/b\r\n//server/share/c");
-        assert_eq!(result.path_count, 2);
+        assert_eq!(
+            result.output,
+            concat!(
+                "C:/a/b\r\n",
+                "C:/a/b\r\n",
+                "\\\\server\\share\\c\r\n",
+                "//server/share/c\r\n",
+                "\\\\?\\UNC\\server\\share\\d\r\n",
+                "\\\\?\\C:\\long\\path",
+            )
+        );
+        assert_eq!(result.path_count, 6);
+    }
+
+    #[test]
+    fn preserves_quoted_unc_and_extended_paths() {
+        let profile = profile("slash", vec![TransformStep::ForwardSlash]);
+
+        for input in [
+            r#""\\server\share\a""#,
+            r#""//server/share/a""#,
+            r#""\\?\UNC\server\share\a""#,
+            r#""\\?\C:\a\b""#,
+        ] {
+            let result = transform_text(&profile, input).unwrap().unwrap();
+            assert_eq!(result.output, input);
+        }
     }
 
     #[test]
@@ -318,7 +362,7 @@ mod tests {
         let result = transform_text(&profile, r"\\?\C:\long\path")
             .unwrap()
             .unwrap();
-        assert_eq!(result.output, "C:/long/path");
+        assert_eq!(result.output, r"\\?\C:\long\path");
     }
 
     #[test]

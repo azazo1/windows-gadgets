@@ -39,7 +39,7 @@ wslproxy run
 
 ## pathclip
 
-`pathclip` 默认将剪贴板中的 Windows 绝对路径转换为正斜杠格式. 它支持 WSL 路径, file URI, 正则转换链和可配置全局热键.
+`pathclip` 默认将剪贴板中的普通 Windows 盘符路径转换为正斜杠格式, UNC, `//` 和 `\\?\` 路径保持原样. 它支持 WSL 路径, file URI, 正则转换链和可配置全局热键.
 
 自动模式不会改写资源管理器复制的文件对象. 只有按下 profile 对应热键时, 文件对象才会被转换成路径文本.
 
