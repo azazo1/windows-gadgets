@@ -50,7 +50,7 @@ name = "windows-20002"
 distro = "Ubuntu"
 
 [reverse_forwards.listen]
-port = 20002
+port = 20003
 
 [reverse_forwards.target]
 port = 20002
@@ -76,7 +76,33 @@ port = 20002
 - `reverse_forwards.listen.port`: WSL 内的 `127.0.0.1` 监听端口.
 - `reverse_forwards.target.port`: Windows 内的 `127.0.0.1` 目标端口.
 
-反向规则固定映射 `WSL 127.0.0.1:<listen.port>` 到 `Windows 127.0.0.1:<target.port>`. 同一个发行版不能有两条规则占用相同 WSL 监听端口. 它不会创建 Windows 入站监听器, 不会暴露 Windows 服务到局域网, 也不会创建 Windows 防火墙规则.
+反向规则固定映射 `WSL 127.0.0.1:<listen.port>` 到 `Windows 127.0.0.1:<target.port>`. 同一个发行版不能有两条规则占用相同 WSL 监听端口. `wslproxy` 自身不会创建 Windows 入站监听器, 不会暴露 Windows 服务到局域网, 也不会创建 Windows 防火墙规则.
+
+建议让反向规则的 `listen.port` 与 `target.port` 使用不同端口. WSL 2 NAT 的原生 localhost forwarding 会检测 WSL 内的 TCP 监听器, 并可能启动 `C:\Program Files\WSL\wslrelay.exe` 在 Windows loopback 上监听相同端口. 如果两个端口相同, `wslrelay.exe` 可能先于 Windows 目标服务占用该端口, 导致目标服务绑定失败. Windows 端代理也可能误连到 `wslrelay.exe`, 形成递归转发并耗尽连接数限制. 该 Windows 监听器由 WSL 自动创建, 不是 `wslproxy` 直接启动或控制的监听器.
+
+### 关闭 WSL localhost forwarding
+
+如果需要在 WSL 和 Windows 两端使用相同端口, 可以在 Windows 用户目录的 `.wslconfig` 中关闭 WSL 2 NAT 的原生 localhost forwarding. 在现有 `[wsl2]` 区段中设置:
+
+```ini
+[wsl2]
+localhostForwarding=false
+```
+
+然后在 PowerShell 中完全关闭 WSL, 再重新启动发行版:
+
+```powershell
+wsl --shutdown
+```
+
+关闭前需要注意:
+
+- 该选项全局影响全部 WSL 2 发行版, 不能只排除一个端口.
+- Windows 将无法继续通过 `localhost` 访问 WSL 服务.
+- 正向规则的 `target.mode = "localhost"` 将无法工作.
+- 正向规则的 `target.mode = "wsl-ip"` 不受影响.
+- `reverse_forwards` 使用自己的 agent 管道, 不依赖原生 localhost forwarding.
+- mirrored networking 下该选项可能不生效. 本项目要求使用 NAT 网络. 如果不能切换到 NAT, 应让反向规则使用不同的监听端口和目标端口.
 
 ## 行为
 
