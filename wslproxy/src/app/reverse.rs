@@ -10,7 +10,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use futures::io::{AsyncRead, AsyncWrite};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, copy_bidirectional};
 use tokio::net::TcpStream;
-use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
+use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout};
 use tokio::sync::{Semaphore, watch};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, timeout};
@@ -20,6 +20,7 @@ use wslproxy_protocol::{SplitIo, host_handshake};
 use yamux::{Config, Connection, Mode, Stream};
 
 use super::config::{ReverseForwardRule, Settings};
+use super::wsl;
 
 mod embedded_agent {
     include!(concat!(env!("OUT_DIR"), "/embedded_agent.rs"));
@@ -204,7 +205,7 @@ impl SystemAgentLauncher {
     }
 
     async fn ensure_x86_64(&self, distro: &str) -> Result<()> {
-        let output = Command::new("wsl.exe")
+        let output = wsl::command()
             .args(["--distribution", distro, "--exec", "uname", "-m"])
             .output()
             .await
@@ -230,7 +231,7 @@ impl SystemAgentLauncher {
 
         let listen_port = rule.listen.port.to_string();
         let max_connections = max_connections.to_string();
-        let mut command = Command::new("wsl.exe");
+        let mut command = wsl::command();
         command
             .args([
                 "--distribution",
@@ -554,7 +555,7 @@ where
 }
 
 async fn agent_is_deployed(distro: &str) -> Result<bool> {
-    let output = Command::new("wsl.exe")
+    let output = wsl::command()
         .args(["--distribution", distro, "--exec", "sh", "-c", AGENT_PATH_TEST])
         .output()
         .await
@@ -571,7 +572,7 @@ async fn agent_is_deployed(distro: &str) -> Result<bool> {
 }
 
 async fn deploy_agent(distro: &str, binary: &[u8]) -> Result<()> {
-    let mut child = Command::new("wsl.exe")
+    let mut child = wsl::command()
         .args(["--distribution", distro, "--exec", "sh", "-c", AGENT_DEPLOY])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())

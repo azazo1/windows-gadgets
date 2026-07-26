@@ -6,6 +6,7 @@ mod logging;
 mod network_adapter;
 mod reverse;
 mod target;
+mod wsl;
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;

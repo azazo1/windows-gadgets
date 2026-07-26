@@ -112,6 +112,8 @@ wsl --shutdown
 
 反向规则使用每条规则独立的 `wsl.exe` helper 管道和多路 TCP 会话. WSL 或 helper 在运行中退出时, 该规则会按 1 秒到 30 秒退避重启, 不影响其他正向或反向规则. 持久 helper 会帮助保持 WSL 活跃, 但不能阻止显式 WSL 关闭操作.
 
+所有内部 `wsl.exe` 子进程都以无控制台方式运行, 并通过捕获输出或显式管道通信. 它们不会修改 `wslproxy` 所在终端的控制台模式, 也不会接收该终端的 `Ctrl+C`. 退出信号由 `wslproxy` 主进程统一处理.
+
 `wslproxy check` 会验证正向规则的网卡解析, WSL 启动和目标 TCP 连通性. 对反向规则, 它会启动 agent 并完成握手, 再探测 Windows loopback 目标. `check` 不创建正向或反向监听器, 也不会修改防火墙.
 
 ## 发布构建

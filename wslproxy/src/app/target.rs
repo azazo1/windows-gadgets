@@ -8,11 +8,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
-use tokio::process::Command;
 use tokio::sync::Mutex;
 use tracing::warn;
 
 use super::config::{ForwardRule, TargetMode};
+use super::wsl;
 
 const INITIAL_RETRY_DELAY: Duration = Duration::from_secs(1);
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(30);
@@ -30,7 +30,7 @@ pub struct SystemWslControl;
 impl WslControl for SystemWslControl {
     fn ensure_started<'a>(&'a self, distro: &'a str) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
-            let output = Command::new("wsl.exe")
+            let output = wsl::command()
                 .args(["--distribution", distro, "--exec", "true"])
                 .output()
                 .await
@@ -41,7 +41,7 @@ impl WslControl for SystemWslControl {
 
     fn resolve_ipv4<'a>(&'a self, distro: &'a str) -> BoxFuture<'a, Result<Ipv4Addr>> {
         Box::pin(async move {
-            let output = Command::new("wsl.exe")
+            let output = wsl::command()
                 .args([
                     "--distribution",
                     distro,
