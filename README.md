@@ -1,3 +1,5 @@
+
+
 # windows-gadgets
 
 一些偏 Windows 日常使用的 Rust 小工具。
@@ -35,7 +37,13 @@ just install
 wslproxy run
 ```
 
-默认配置路径为 `~/.config/wslproxy/config.toml`. 使用 [wslproxy/wslproxy.toml.example](wslproxy/wslproxy.toml.example) 作为起点.
+默认配置路径为 `~/.config/wslproxy/config.toml`. 可以通过以下命令查看完整默认配置:
+
+```shell
+wslproxy --print-default-config
+```
+
+使用 [wslproxy/wslproxy.toml.example](wslproxy/wslproxy.toml.example) 作为起点.
 
 ## pathclip
 
