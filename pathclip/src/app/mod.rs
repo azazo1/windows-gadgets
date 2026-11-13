@@ -28,7 +28,7 @@ pub(super) enum RuntimeEvent {
 #[derive(Debug, Parser)]
 #[command(
     name = "pathclip",
-    version,
+    version = crate::version::display(),
     about = "自动转换 Windows 剪贴板路径",
     after_help = "配置文件: ~/.config/pathclip/config.toml\n空 hotkey 表示不注册该 profile 的热键."
 )]

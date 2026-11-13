@@ -1,0 +1,569 @@
+name: release
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的已有 tag, 留空时不创建 release"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: 解析版本
+    runs-on: ubuntu-24.04
+    outputs:
+      is_release: ${{ steps.release_context.outputs.is_release }}
+      tag_name: ${{ steps.release_context.outputs.tag_name }}
+      source_ref: ${{ steps.release_context.outputs.source_ref }}
+      version: ${{ steps.release_version.outputs.version }}
+      build_version: ${{ steps.build_version.outputs.build_version }}
+    steps:
+      - name: 解析发布上下文
+        id: release_context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CURRENT_REF: ${{ github.ref }}
+          CURRENT_REF_NAME: ${{ github.ref_name }}
+          CURRENT_SHA: ${{ github.sha }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          is_release=false
+          tag_name=""
+          source_ref="$CURRENT_SHA"
+
+          if [[ "$EVENT_NAME" == "push" && "$CURRENT_REF" == refs/tags/* ]]; then
+            is_release=true
+            tag_name="$CURRENT_REF_NAME"
+            source_ref="$CURRENT_REF"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$DISPATCH_TAG" ]]; then
+            git check-ref-format "refs/tags/$DISPATCH_TAG"
+            is_release=true
+            tag_name="$DISPATCH_TAG"
+            source_ref="refs/tags/$DISPATCH_TAG"
+          fi
+
+          echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+
+      - name: 检出目标提交
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.release_context.outputs.source_ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 准备 uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+
+      # 本仓库的 tag 是唯一版本来源: 各工具的 Cargo.toml 版本彼此独立, 不参与发布.
+      # 所以这里只校验 tag 格式与对应 notes 文件, 不再比对包版本.
+      - name: 校验发布版本
+        id: release_version
+        if: steps.release_context.outputs.is_release == 'true'
+        env:
+          TAG_NAME: ${{ steps.release_context.outputs.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "tag $TAG_NAME 不是 v<主>.<次>.<修订> 形式, 无法解析发布版本" >&2
+            exit 1
+          fi
+
+          version="${TAG_NAME#v}"
+          manual_notes="docs/changelog/$version.md"
+          if [[ ! -s "$manual_notes" ]]; then
+            echo "缺少 release notes: $manual_notes, 先提交该文件并让 annotated tag 指向它" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: 解析构建版本
+        id: build_version
+        env:
+          IS_RELEASE: ${{ steps.release_context.outputs.is_release }}
+          RELEASE_VERSION: ${{ steps.release_version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$IS_RELEASE" == "true" ]]; then
+            echo "build_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 首个 tag 之前没有版本号可读, 这里用中性占位版本兜底, 与 scripts/dist.py 的
+          # PACKAGE_VERSION 保持一致. 打完第一个 tag 之后由 tag 提供基础版本号.
+          package_version="0.0.0"
+          build_version="$(
+            PROJECT_PACKAGE_VERSION="$package_version" \
+              uv run --no-project python scripts/build-version.py
+          )"
+          echo "build_version=$build_version" >> "$GITHUB_OUTPUT"
+
+  agents:
+    name: 构建 WSL helper (${{ matrix.arch }})
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: 检出目标提交
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.source_ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 安装 musl 工具链
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: 准备 Rust 工具链
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: 恢复构建缓存
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+          key: agent-${{ matrix.arch }}
+
+      # aarch64 与 x86_64 的 musl target 都要用 musl 链接器, 不能落到宿主 glibc 的 cc.
+      - name: 构建 helper
+        env:
+          AGENT_TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          linker_var="CARGO_TARGET_$(echo "$AGENT_TARGET" | tr 'a-z-' 'A-Z_')_LINKER"
+          export "$linker_var=musl-gcc"
+          cargo build --release --locked -p wslproxy-agent --target "$AGENT_TARGET"
+
+      - name: 校验 helper 文件格式
+        env:
+          AGENT_TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="target/$AGENT_TARGET/release/wslproxy-agent"
+          test -f "$binary"
+          file "$binary" | grep -q 'ELF'
+          test -x "$binary"
+
+      - name: 上传 helper
+        uses: actions/upload-artifact@v7
+        with:
+          name: wslproxy-agent-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release/wslproxy-agent
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    name: 构建 (${{ matrix.arch }})
+    needs: [version, agents]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            arch: x86_64
+          - runner: windows-11-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: 检出目标提交
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.source_ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 准备 uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+
+      - name: 准备 Rust 工具链
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: 恢复构建缓存
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+          key: build-${{ matrix.arch }}
+
+      - name: 运行测试
+        run: cargo test --locked --workspace
+
+      - name: 下载对应架构的 helper
+        uses: actions/download-artifact@v8
+        with:
+          name: wslproxy-agent-${{ matrix.arch }}
+          path: agent
+
+      # dist.py 负责平台判断, 版本解析, 多二进制冒烟检查与打包, 这里只注入版本与 helper 路径.
+      - name: 构建发布产物
+        env:
+          PROJECT_BUILD_VERSION: v${{ needs.version.outputs.build_version }}
+          WSLPROXY_AGENT_PATH: agent/wslproxy-agent
+          TARGET_PLATFORM: windows
+          TARGET_ARCH: ${{ matrix.arch }}
+        shell: pwsh
+        run: uv run --no-project python scripts/dist.py
+
+      - name: 校验归档内容
+        env:
+          ARCHIVE: dist/windows-gadgets-${{ needs.version.outputs.build_version }}-windows-${{ matrix.arch }}.zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path -LiteralPath $env:ARCHIVE -PathType Leaf)) {
+            throw "缺少归档: $env:ARCHIVE"
+          }
+
+          $out = Join-Path $env:RUNNER_TEMP "archive-check"
+          if (Test-Path -LiteralPath $out) { Remove-Item -LiteralPath $out -Recurse -Force }
+          Expand-Archive -LiteralPath $env:ARCHIVE -DestinationPath $out -Force
+
+          foreach ($name in @("fncaps.exe", "imeswitch.exe", "pathclip.exe", "wslproxy.exe", "README.md", "LICENSE")) {
+            $path = Join-Path $out $name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "归档缺少: $name"
+            }
+          }
+
+          $entries = @(Get-ChildItem -LiteralPath $out -Force -File).Count
+          if ($entries -ne 6) {
+            throw "归档顶层条目数应为 6, 实际 $entries"
+          }
+
+      - name: 上传发布产物
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-gadgets-${{ needs.version.outputs.build_version }}-windows-${{ matrix.arch }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: 发布 release
+    if: needs.version.outputs.is_release == 'true'
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: 检出发布 tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.source_ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      # fetch-depth: 0 不能代替精确 refetch: tag 可能在 workflow 开始后被移动.
+      - name: 重新获取 annotated tag object
+        env:
+          TAG_NAME: ${{ needs.version.outputs.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git check-ref-format "refs/tags/$TAG_NAME"
+          git fetch --force origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+
+      - name: 校验 tag annotation
+        env:
+          TAG_NAME: ${{ needs.version.outputs.tag_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_ref="refs/tags/$TAG_NAME"
+          manual_notes="docs/changelog/$VERSION.md"
+
+          if [[ ! -s "$manual_notes" ]]; then
+            echo "缺少 release notes: $manual_notes" >&2
+            exit 1
+          fi
+
+          tag_type="$(git cat-file -t "$tag_ref")"
+          if [[ "$tag_type" != "tag" ]]; then
+            echo "发布 tag 必须是 annotated tag: $TAG_NAME" >&2
+            exit 1
+          fi
+
+          git cat-file tag "$tag_ref" | sed '1,/^$/d' > tag-notes.md
+          if ! grep -q '[^[:space:]]' tag-notes.md; then
+            echo "发布 tag 的 annotation 不能为空: $TAG_NAME" >&2
+            exit 1
+          fi
+
+          if ! cmp -s "$manual_notes" tag-notes.md; then
+            echo "发布 tag 的 annotation 与 $manual_notes 不一致" >&2
+            diff -u "$manual_notes" tag-notes.md || true
+            exit 1
+          fi
+
+      - name: 生成 release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.version.outputs.tag_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          manual_notes="docs/changelog/$VERSION.md"
+          base_tag_file="docs/changelog/$VERSION-base.txt"
+          api_args=(
+            --method POST
+            "repos/$GITHUB_REPOSITORY/releases/generate-notes"
+            -f "tag_name=$TAG_NAME"
+          )
+
+          target_sha="$(git rev-parse HEAD)"
+          api_args+=(-f "target_commitish=$target_sha")
+
+          if [[ -s "$base_tag_file" ]]; then
+            base_tag="$(<"$base_tag_file")"
+            git check-ref-format "refs/tags/$base_tag"
+            api_args+=(-f "previous_tag_name=$base_tag")
+          fi
+
+          gh api "${api_args[@]}" --jq '.body' > generated-notes.md
+          cp "$manual_notes" release-notes.md
+
+          if [[ -s generated-notes.md ]]; then
+            printf '\n---\n\n' >> release-notes.md
+            cat generated-notes.md >> release-notes.md
+          fi
+
+      - name: 下载构建产物
+        uses: actions/download-artifact@v8
+        with:
+          pattern: windows-gadgets-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: 生成校验和
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cd release-artifacts
+          archives=(windows-gadgets-*.zip)
+
+          if (( ${#archives[@]} != 2 )); then
+            echo "预期 2 个归档 (windows-x86_64 与 windows-aarch64), 实际找到 ${#archives[@]} 个" >&2
+            exit 1
+          fi
+
+          sha256sum "${archives[@]}" > SHA256SUMS
+
+      - name: 创建或更新 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.version.outputs.tag_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(
+            release-artifacts/windows-gadgets-*.zip
+            release-artifacts/SHA256SUMS
+          )
+
+          if (( ${#assets[@]} != 3 )); then
+            echo "预期 3 个发布文件 (2 个归档加 SHA256SUMS), 实际找到 ${#assets[@]} 个" >&2
+            exit 1
+          fi
+
+          prerelease_args=()
+          # 只认主版本之后的 - 段 (SemVer 预发布), 不要用 *-* 误判.
+          if [[ "$VERSION" =~ ^[vV]?[0-9]+([.][0-9]+)*[-] ]]; then
+            prerelease_args+=(--prerelease)
+          fi
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release edit "$TAG_NAME" \
+              --verify-tag \
+              --title "windows-gadgets v$VERSION" \
+              --notes-file release-notes.md \
+              "${prerelease_args[@]}"
+            gh release upload "$TAG_NAME" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG_NAME" "${assets[@]}" \
+              --verify-tag \
+              --title "windows-gadgets v$VERSION" \
+              --notes-file release-notes.md \
+              "${prerelease_args[@]}"
+          fi
+
+  prerelease:
+    name: 更新滚动预发布
+    needs: [version, build]
+    # 只在分支 push 时更新滚动预发布; tag push 走正式发布, PR 与手动触发不改写公共 release.
+    if: needs.version.outputs.is_release != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      # 这个 job 不检出代码, gh 推断不出仓库, 必须显式指定.
+      GH_REPO: ${{ github.repository }}
+    # 所有分支共用同一个 release, 必须串行.
+    concurrency:
+      group: rolling-prerelease
+      cancel-in-progress: false
+    steps:
+      - name: 确认提交仍是最新
+        id: freshness
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_branches="$(gh api "repos/$GITHUB_REPOSITORY/commits/$COMMIT/branches-where-head" --jq '.[].name')"
+
+          is_latest=false
+          if grep -Fxq "$BRANCH" <<< "$head_branches"; then
+            is_latest=true
+          else
+            echo "::notice::$BRANCH 的 HEAD 已不在 $COMMIT, 本次预发布让给更新的运行"
+          fi
+          echo "is_latest=$is_latest" >> "$GITHUB_OUTPUT"
+
+      - name: 下载构建产物
+        if: steps.freshness.outputs.is_latest == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: windows-gadgets-*
+          path: prerelease-artifacts
+          merge-multiple: true
+
+      - name: 生成校验和
+        if: steps.freshness.outputs.is_latest == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cd prerelease-artifacts
+          archives=(windows-gadgets-*.zip)
+
+          if (( ${#archives[@]} != 2 )); then
+            echo "预期 2 个归档 (windows-x86_64 与 windows-aarch64), 实际找到 ${#archives[@]} 个" >&2
+            exit 1
+          fi
+
+          sha256sum "${archives[@]}" > SHA256SUMS
+
+      - name: 更新预发布 Release
+        if: steps.freshness.outputs.is_latest == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          BUILD_VERSION: ${{ needs.version.outputs.build_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # 不带 TAG_PREFIX 前缀, 且保持 lightweight: 版本解析按前缀过滤 tag,
+          # 带上前缀会让它被当成版本号. 这个 tag 只在首次创建时落位, 之后不再移动.
+          tag="dev-latest"
+          assets=(
+            prerelease-artifacts/windows-gadgets-*.zip
+            prerelease-artifacts/SHA256SUMS
+          )
+
+          if (( ${#assets[@]} != 3 )); then
+            echo "预期 3 个发布文件 (2 个归档加 SHA256SUMS), 实际找到 ${#assets[@]} 个" >&2
+            exit 1
+          fi
+
+          {
+            echo "分支 \`$BRANCH\` 最新一次 push 的滚动预发布, 产物会被后续 push 覆盖."
+            echo
+            echo "- 提交: [\`${COMMIT:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${COMMIT})"
+            echo "- 构建版本: \`v$BUILD_VERSION\`"
+            echo
+            echo "这个 release 的 tag 固定在首次创建时的提交, 页面上的 Commit 链接不代表本次构建,"
+            echo "最新的产物与提交以上面的内容为准."
+          } > prerelease-notes.md
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # release 已存在: 只更新说明与产物, tag 与 release 本身保持不动.
+            gh release edit "$tag" \
+              --title "windows-gadgets 最新构建 v$BUILD_VERSION" \
+              --notes-file prerelease-notes.md \
+              --prerelease \
+              --latest=false
+          else
+            # 首次创建: 清掉可能残留的旧 tag, 让 tag 落在本次提交上.
+            if gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" >/dev/null 2>&1; then
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag"
+            fi
+            gh release create "$tag" \
+              --target "$COMMIT" \
+              --title "windows-gadgets 最新构建 v$BUILD_VERSION" \
+              --notes-file prerelease-notes.md \
+              --prerelease \
+              --latest=false
+          fi
+
+          gh release upload "$tag" "${assets[@]}" --clobber
+
+          # 产物名带构建版本号, 每轮都不同, 不清理会越积越多;
+          # 先传新的再删旧的, 上传失败时仍能下载到上一轮的完整产物.
+          current_names=()
+          for asset_path in "${assets[@]}"; do
+            current_names+=("$(basename "$asset_path")")
+          done
+          while IFS= read -r asset; do
+            [[ -n "$asset" ]] || continue
+            keep=false
+            for name in "${current_names[@]}"; do
+              if [[ "$asset" == "$name" ]]; then
+                keep=true
+                break
+              fi
+            done
+            if [[ "$keep" == "false" ]]; then
+              gh release delete-asset "$tag" "$asset" --yes
+            fi
+          done < <(gh release view "$tag" --json assets --jq '.assets[].name')

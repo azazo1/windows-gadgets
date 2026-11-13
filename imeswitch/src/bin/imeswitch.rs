@@ -9,7 +9,7 @@ mod app {
     #[derive(Debug, Parser)]
     #[command(
         name = "imeswitch",
-        version,
+        version = imeswitch::version::display(),
         about = "Windows 输入法后台切换守护进程",
         after_help = "默认热键:\n  单独按 Left Alt（非全屏前台）  -> 切到英文输入法\n  单独按 Right Alt（非全屏前台） -> 切到中文输入法\n  Esc / Ctrl+[ -> 切到英文输入法\n\n使用示例:\n  imeswitch\n  imeswitch --no-ime-resetting --no-alt-switching\n  imeswitch --no-ensure-chinese-mode\n  imeswitch --locale-en 1033 --locale-zh 2052 --poll-ms 80"
     )]

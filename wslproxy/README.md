@@ -9,8 +9,8 @@
 - 目标 WSL 服务仅监听 `127.0.0.1` 时, 使用 `localhost` 模式并保持 WSL localhost forwarding 可用.
 - Windows 防火墙必须允许客户端访问配置的监听地址和端口. `wslproxy` 不会创建或删除防火墙规则.
 - 代理链路不加密. 外部访问应使用 SSH, TLS 或目标服务自身的认证机制.
-- 反向规则要求 WSL 发行版为 `x86_64`, 并要求使用内嵌 Linux agent 的 Windows 程序. `just install` 和官方发布包都会内嵌该 agent. 单独执行不带 `bundled-agent` feature 的 `cargo install --path wslproxy` 只能使用正向规则.
-- 构建内嵌 agent 的版本需要 Zig, `cargo-zigbuild` 和 Rust 的 `x86_64-unknown-linux-musl` target.
+- 反向规则要求 WSL 发行版架构与运行 `wslproxy` 的 Windows 架构一致: x86_64 版内嵌 x86_64 agent, aarch64 版内嵌 aarch64 agent. `just install` 和官方发布包都会内嵌对应架构的 agent. 单独执行不带 `bundled-agent` feature 的 `cargo install --path wslproxy` 只能使用正向规则.
+- 构建内嵌 agent 的版本需要 Zig, `cargo-zigbuild` 和当前架构对应的 Rust musl target.
 
 ## 安装和运行
 
@@ -118,10 +118,14 @@ wsl --shutdown
 
 ## 发布构建
 
-官方发布包会先为 Linux 构建静态 agent, 再以 `bundled-agent` feature 将其嵌入 Windows 程序. `just wslproxy-release` 会执行这两个步骤. 运行中的 Windows 程序只会将 agent 复制到目标发行版自己的缓存目录, 不会修改系统目录.
+官方发布包会先为 Linux 构建静态 agent, 再以 `bundled-agent` feature 将其嵌入 Windows 程序. `just dist` 会依次完成这两步并打出 zip. 运行中的 Windows 程序只会将 agent 复制到目标发行版自己的缓存目录, 不会修改系统目录.
+
+`just agent` 只构建当前架构对应的 agent, 需要 Zig, `cargo-zigbuild` 和与宿主架构一致的 Rust musl target:
 
 ```shell
 rustup target add x86_64-unknown-linux-musl
 cargo install cargo-zigbuild
-just wslproxy-release
+just agent
 ```
+
+arm64 的 Windows 换用 `aarch64-unknown-linux-musl`, 因为 arm64 WSL 里执行不了 x86_64 的 agent.

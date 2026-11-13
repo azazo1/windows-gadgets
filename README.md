@@ -15,6 +15,17 @@
 just install
 ```
 
+## 发布产物
+
+`just dist` 会生成当前平台的单个 zip, 内含全部工具的 exe 与 `README.md`:
+
+```shell
+just dist
+# dist/windows-gadgets-<版本>-windows-<架构>.zip
+```
+
+发布产物按 Windows x86_64 与 aarch64 各出一份. 各工具的 `--version` 会显示自身版本和构建版本, 例如 `imeswitch 0.1.0 (v0.2.0-a1b2c3d)`. 发布构建的版本号来自 git tag, 还没有 tag 时使用 `0.0.0-<短 hash>` 形式; 不经 `just dist` 的直接构建显示 `dev-build`.
+
 ## wslproxy
 
 `wslproxy` 是一个 Windows 前台守护进程. 它按 TOML 规则支持 Windows IPv4 到 WSL 服务的正向转发, 以及 WSL loopback 到 Windows loopback 服务的反向转发.

@@ -1,14 +1,16 @@
 default: install
 
-# 安装全部工具.
-install:
+# 安装全部工具, 含内嵌 WSL helper 的 wslproxy.
+install: agent
     cargo install --path fncaps
     cargo install --path imeswitch
     cargo install --path pathclip
-    cargo zigbuild -p wslproxy-agent --release --target x86_64-unknown-linux-musl
     cargo install --path wslproxy --features bundled-agent
 
-# 构建内嵌 Linux agent 的 wslproxy Windows 发布程序.
-wslproxy-release:
-    cargo zigbuild -p wslproxy-agent --release --target x86_64-unknown-linux-musl
-    cargo zigbuild -p wslproxy --release --features bundled-agent
+# 构建当前架构对应的 WSL musl helper, 供 wslproxy 内嵌.
+agent:
+    uv run --no-project python scripts/build-agent.py
+
+# 生成当前平台的发布产物 (单个 zip).
+dist: agent
+    uv run --no-project python scripts/dist.py

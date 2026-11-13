@@ -1,5 +1,6 @@
 #[cfg(target_os = "windows")]
 mod app;
+mod version;
 
 #[cfg(target_os = "windows")]
 #[tokio::main(flavor = "multi_thread")]
